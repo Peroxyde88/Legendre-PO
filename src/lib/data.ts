@@ -158,10 +158,36 @@ export async function createPurchaseOrder(draft: PurchaseOrderDraft) {
   return data.id as string;
 }
 
-export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrderStatus) {
+export async function updatePurchaseOrder(id: string, draft: PurchaseOrderDraft) {
   const client = requireClient();
-  const { error } = await client.from("purchase_orders").update({ status }).eq("id", id);
+  const { line_items, ...po } = draft;
+
+  const { error } = await client
+    .from("purchase_orders")
+    .update(po)
+    .eq("id", id);
   if (error) throw error;
+
+  const { error: deleteError } = await client
+    .from("purchase_order_line_items")
+    .delete()
+    .eq("purchase_order_id", id);
+  if (deleteError) throw deleteError;
+
+  const rows = line_items.map((item, index) => ({
+    purchase_order_id: id,
+    sort_order: index + 1,
+    description: item.description,
+    quantity: item.quantity,
+    unit: item.unit,
+    rate: item.rate,
+    vat_rate: item.vat_rate,
+  }));
+
+  if (rows.length) {
+    const { error: lineError } = await client.from("purchase_order_line_items").insert(rows);
+    if (lineError) throw lineError;
+  }
 }
 
 export function roleCanAdmin(role: AppRole | null | undefined) {

@@ -12,6 +12,7 @@ import {
   FilePlus2,
   LogOut,
   Package,
+  Pencil,
   Plus,
   Printer,
   RefreshCw,
@@ -29,7 +30,7 @@ import {
   loadReferenceData,
   roleCanAdmin,
   roleCanWritePo,
-  updatePurchaseOrderStatus,
+  updatePurchaseOrder,
   upsertCategory,
   upsertProject,
   upsertSetting,
@@ -115,6 +116,7 @@ function ProcurementShell({ session }: { session: Session }) {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingPurchaseOrder, setEditingPurchaseOrder] = useState<PurchaseOrder | null>(null);
 
   const currentStaff = useMemo(() => {
     const email = session.user.email?.toLowerCase();
@@ -173,7 +175,10 @@ function ProcurementShell({ session }: { session: Session }) {
                 className={view === item.key ? "nav-item active" : "nav-item"}
                 disabled={item.disabled}
                 key={item.key}
-                onClick={() => setView(item.key)}
+                onClick={() => {
+                  if (item.key === "new-po") setEditingPurchaseOrder(null);
+                  setView(item.key);
+                }}
                 title={item.disabled ? "Admin access required" : item.label}
               >
                 <Icon size={18} />
@@ -220,11 +225,22 @@ function ProcurementShell({ session }: { session: Session }) {
                 canWrite={canWritePo}
                 purchaseOrders={purchaseOrders}
                 references={references}
-                onRefresh={refresh}
+                onEdit={(po) => {
+                  setEditingPurchaseOrder(po);
+                  setView("new-po");
+                }}
               />
             )}
             {view === "new-po" && (
-              <POForm references={references} onCreated={refresh} onDone={() => setView("purchase-orders")} />
+              <POForm
+                editingPurchaseOrder={editingPurchaseOrder}
+                references={references}
+                onSaved={refresh}
+                onDone={() => {
+                  setEditingPurchaseOrder(null);
+                  setView("purchase-orders");
+                }}
+              />
             )}
             {view === "suppliers" && (
               <AdminPanel
@@ -812,28 +828,17 @@ function PurchaseOrders({
   purchaseOrders,
   references,
   canWrite,
-  onRefresh,
+  onEdit,
 }: {
   purchaseOrders: PurchaseOrder[];
   references: ReferenceData;
   canWrite: boolean;
-  onRefresh: () => Promise<void>;
+  onEdit: (po: PurchaseOrder) => void;
 }) {
   const [preview, setPreview] = useState<PurchaseOrder | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function changeStatus(id: string, status: PurchaseOrderStatus) {
-    try {
-      await updatePurchaseOrderStatus(id, status);
-      await onRefresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update status.");
-    }
-  }
 
   return (
     <section className="work-section">
-      {error && <div className="notice error">{error}</div>}
       <div className="table-wrap">
         <table>
           <thead>
@@ -842,7 +847,6 @@ function PurchaseOrders({
               <th>Date</th>
               <th>Project</th>
               <th>Supplier</th>
-              <th>Status</th>
               <th>Total</th>
               <th className="actions-cell">Actions</th>
             </tr>
@@ -854,31 +858,20 @@ function PurchaseOrders({
                 <td>{shortDate(po.po_date)}</td>
                 <td>{po.project?.project_name}</td>
                 <td>{po.supplier?.supplier_name}</td>
-                <td>
-                  <select
-                    className="status-select"
-                    disabled={!canWrite}
-                    value={po.status}
-                    onChange={(event) => changeStatus(po.id, event.target.value as PurchaseOrderStatus)}
-                  >
-                    {statuses.map((status) => (
-                      <option value={status} key={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </td>
                 <td>{money(po.grand_total)}</td>
                 <td className="actions-cell">
                   <button className="icon-button" onClick={() => setPreview(po)} title="Preview">
                     <Eye size={16} />
+                  </button>
+                  <button className="icon-button" disabled={!canWrite} onClick={() => onEdit(po)} title="Edit">
+                    <Pencil size={16} />
                   </button>
                 </td>
               </tr>
             ))}
             {!purchaseOrders.length && (
               <tr>
-                <td colSpan={7}>No purchase orders yet.</td>
+                <td colSpan={6}>No purchase orders yet.</td>
               </tr>
             )}
           </tbody>
@@ -889,30 +882,61 @@ function PurchaseOrders({
   );
 }
 
-function POForm({ references, onCreated, onDone }: { references: ReferenceData; onCreated: () => Promise<void>; onDone: () => void }) {
-  const activeSuppliers = references.suppliers.filter((supplier) => supplier.is_active);
-  const activeProjects = references.projects.filter((project) => project.is_active);
-  const activeStaff = references.staff.filter((member) => member.is_active);
-  const activeCategories = references.categories.filter((category) => category.is_active);
+function POForm({
+  editingPurchaseOrder,
+  references,
+  onSaved,
+  onDone,
+}: {
+  editingPurchaseOrder: PurchaseOrder | null;
+  references: ReferenceData;
+  onSaved: () => Promise<void>;
+  onDone: () => void;
+}) {
+  const activeSuppliers = references.suppliers.filter((supplier) => supplier.is_active || supplier.id === editingPurchaseOrder?.supplier_id);
+  const activeProjects = references.projects.filter((project) => project.is_active || project.id === editingPurchaseOrder?.project_id);
+  const activeStaff = references.staff.filter(
+    (member) =>
+      member.is_active ||
+      member.id === editingPurchaseOrder?.requester_id ||
+      member.id === editingPurchaseOrder?.approver_id,
+  );
+  const activeCategories = references.categories.filter(
+    (category) => category.is_active || category.id === editingPurchaseOrder?.category_id,
+  );
 
-  const [supplierId, setSupplierId] = useState(activeSuppliers[0]?.id ?? "");
-  const [projectId, setProjectId] = useState(activeProjects[0]?.id ?? "");
+  const [supplierId, setSupplierId] = useState(editingPurchaseOrder?.supplier_id ?? activeSuppliers[0]?.id ?? "");
+  const [projectId, setProjectId] = useState(editingPurchaseOrder?.project_id ?? activeProjects[0]?.id ?? "");
   const [form, setForm] = useState({
-    requester_id: activeStaff[0]?.id ?? "",
-    approver_id: "",
-    category_id: activeCategories[0]?.id ?? "",
-    po_date: isoToday(),
-    delivery_date: "",
-    delivery_address: activeProjects[0]?.default_delivery_address ?? activeProjects[0]?.site_address ?? "",
-    site_contact: "",
-    vehicle_requirements: "Vehicle to have accreditation FORS Silver as a minimum.",
-    offloading_instructions: "By hand during site delivery hours.",
+    requester_id: editingPurchaseOrder?.requester_id ?? activeStaff[0]?.id ?? "",
+    approver_id: editingPurchaseOrder?.approver_id ?? "",
+    category_id: editingPurchaseOrder?.category_id ?? activeCategories[0]?.id ?? "",
+    po_date: editingPurchaseOrder?.po_date ?? isoToday(),
+    delivery_date: editingPurchaseOrder?.delivery_date ?? "",
+    delivery_address:
+      editingPurchaseOrder?.delivery_address ??
+      activeProjects[0]?.default_delivery_address ??
+      activeProjects[0]?.site_address ??
+      "",
+    site_contact: editingPurchaseOrder?.site_contact ?? "",
+    vehicle_requirements: editingPurchaseOrder?.vehicle_requirements ?? "Vehicle to have accreditation FORS Silver as a minimum.",
+    offloading_instructions: editingPurchaseOrder?.offloading_instructions ?? "By hand during site delivery hours.",
     delivery_instructions:
+      editingPurchaseOrder?.delivery_instructions ??
       "Please call site contact 30 minutes prior to arrival. All drivers must be aware of the site and delivery rules as per the Driver's Leaflet.",
-    notes: "",
+    notes: editingPurchaseOrder?.notes ?? "",
   });
   const [lines, setLines] = useState<PurchaseOrderLineItem[]>([
-    { sort_order: 1, description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20 },
+    ...(editingPurchaseOrder?.line_items?.length
+      ? editingPurchaseOrder.line_items.map((line, index) => ({
+          sort_order: index + 1,
+          description: line.description,
+          quantity: Number(line.quantity),
+          unit: line.unit,
+          rate: Number(line.rate),
+          vat_rate: Number(line.vat_rate),
+        }))
+      : [{ sort_order: 1, description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20 }]),
   ]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -922,16 +946,17 @@ function POForm({ references, onCreated, onDone }: { references: ReferenceData; 
   const subtotal = lines.reduce((sum, item) => sum + item.quantity * item.rate, 0);
   const vatTotal = lines.reduce((sum, item) => sum + item.quantity * item.rate * (item.vat_rate / 100), 0);
 
-  useEffect(() => {
-    if (!project) return;
-    setForm((current) => ({
-      ...current,
-      delivery_address: project.default_delivery_address || project.site_address || current.delivery_address,
-    }));
-  }, [projectId]);
-
   function updateLine(index: number, patch: Partial<PurchaseOrderLineItem>) {
     setLines((current) => current.map((line, lineIndex) => (lineIndex === index ? { ...line, ...patch } : line)));
+  }
+
+  function changeProject(nextProjectId: string) {
+    const nextProject = references.projects.find((item) => item.id === nextProjectId);
+    setProjectId(nextProjectId);
+    setForm((current) => ({
+      ...current,
+      delivery_address: nextProject?.default_delivery_address || nextProject?.site_address || current.delivery_address,
+    }));
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -953,7 +978,7 @@ function POForm({ references, onCreated, onDone }: { references: ReferenceData; 
       requester_id: form.requester_id || null,
       approver_id: form.approver_id || null,
       category_id: form.category_id || null,
-      status: "draft",
+      status: editingPurchaseOrder?.status ?? "draft",
       po_date: form.po_date,
       delivery_date: form.delivery_date || null,
       delivery_address: form.delivery_address || null,
@@ -971,11 +996,15 @@ function POForm({ references, onCreated, onDone }: { references: ReferenceData; 
 
     try {
       setBusy(true);
-      await createPurchaseOrder(draft);
-      await onCreated();
+      if (editingPurchaseOrder) {
+        await updatePurchaseOrder(editingPurchaseOrder.id, draft);
+      } else {
+        await createPurchaseOrder(draft);
+      }
+      await onSaved();
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create purchase order.");
+      setError(err instanceof Error ? err.message : "Unable to save purchase order.");
     } finally {
       setBusy(false);
     }
@@ -985,6 +1014,11 @@ function POForm({ references, onCreated, onDone }: { references: ReferenceData; 
     <section className="work-section">
       <form onSubmit={submit}>
         {error && <div className="notice error">{error}</div>}
+        {editingPurchaseOrder && (
+          <div className="notice">
+            Editing purchase order <strong>{editingPurchaseOrder.po_number}</strong>. Saving will update the existing PO and replace its line items.
+          </div>
+        )}
         <div className="form-grid">
           <label>
             Supplier
@@ -999,7 +1033,7 @@ function POForm({ references, onCreated, onDone }: { references: ReferenceData; 
           </label>
           <label>
             Project / Site
-            <select value={projectId} onChange={(event) => setProjectId(event.target.value)} required>
+            <select value={projectId} onChange={(event) => changeProject(event.target.value)} required>
               <option value="">Select project</option>
               {activeProjects.map((item) => (
                 <option value={item.id} key={item.id}>
@@ -1120,8 +1154,20 @@ function POForm({ references, onCreated, onDone }: { references: ReferenceData; 
         <div className="button-row">
           <button type="submit" disabled={busy}>
             <Save size={16} />
-            Create draft PO
+            {editingPurchaseOrder ? "Save PO changes" : "Create draft PO"}
           </button>
+          {editingPurchaseOrder && (
+            <button type="button" className="secondary" onClick={onDone}>
+              <X size={16} />
+              Cancel edit
+            </button>
+          )}
+          {!editingPurchaseOrder && (
+            <button type="button" className="secondary" onClick={onDone}>
+              <X size={16} />
+              Cancel
+            </button>
+          )}
         </div>
       </form>
     </section>
