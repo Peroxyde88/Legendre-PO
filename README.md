@@ -46,10 +46,9 @@ Copy `.env.example` to `.env`:
 ```bash
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-publishable-or-anon-key
-SUPABASE_SERVICE_ROLE_KEY=server-side-service-role-key-for-invites
 ```
 
-Use the browser-safe Supabase publishable/anon key for `VITE_SUPABASE_ANON_KEY`. The `SUPABASE_SERVICE_ROLE_KEY` is used only by the Netlify invite-user function. Never prefix the service role key with `VITE_`, and never use it in browser code.
+Use the browser-safe Supabase publishable/anon key for `VITE_SUPABASE_ANON_KEY`. Never put a Supabase service role key in Netlify or Vite client variables.
 
 ## PO Numbering
 
@@ -81,20 +80,13 @@ The app will show a setup screen if the Supabase environment variables are missi
 4. Add the same environment variables in Netlify:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
 5. Deploy.
 
 `netlify.toml` includes the Vite build settings and a single-page-app redirect.
 
-## Inviting Users
+## User Access
 
-Admins can invite users from **Staff → Invite User**. The invite flow:
-
-- Verifies the current signed-in user is an active `admin` in `staff_members`
-- Sends a Supabase Auth invite email
-- Creates or updates the matching staff record and role
-
-This requires `SUPABASE_SERVICE_ROLE_KEY` to be configured in Netlify environment variables. Find it in Supabase under **Project Settings → API**. It must stay server-side only.
+For this first version, every signed-in Supabase Auth user has full admin access. Add or remove login users from **Supabase → Authentication → Users**. The Staff page remains available as a staff directory, but it is not currently used to restrict permissions.
 
 ## GitHub Repository
 
@@ -132,7 +124,7 @@ Use the `Print / Save PDF` button in the preview modal and choose the browser's 
 ## Assumptions
 
 - Supabase Auth is used in the first version.
-- Staff roles are managed in the `staff_members` table and matched to Auth users by email.
+- Any signed-in Supabase Auth user has admin access for this first version.
 - The first admin is bootstrapped manually with SQL after creating a Supabase Auth user.
 - The supplied PDF was used as a layout and text reference; the recreated template is HTML/CSS for clean browser printing.
 - Approval workflow is status-based in this first version; detailed approval audit trails can be added later.
