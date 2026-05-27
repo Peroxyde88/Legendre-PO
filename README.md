@@ -55,12 +55,12 @@ Use the browser-safe Supabase publishable/anon key for `VITE_SUPABASE_ANON_KEY`.
 PO numbers are generated in Supabase by a database trigger so duplicates cannot be created by the browser. The convention is:
 
 ```text
-PROJECTCODE-YY-####
+PROJECTCOSTCENTRE-SUPPLIERINITIALS-REQUESTERINITIALS-####
 ```
 
-Example: `CDA-26-0001`.
+Example: `660-L-ER-0001`.
 
-The `purchase_orders.po_number` column has a unique constraint, and the per-project annual sequence is stored in `po_sequences`.
+The project component uses the project cost centre code when available, falling back to the project code. The requester is assigned from the signed-in Supabase user's matching staff email, so users create POs under their own staff profile. The `purchase_orders.po_number` column has a unique constraint, and the per-project sequence is stored in `po_sequences`.
 
 ## Local Development
 

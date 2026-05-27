@@ -303,6 +303,25 @@ th {
   color: #832018;
 }
 
+.readonly-field {
+  background: #f7faf8;
+  border: 1px solid #d8e2dc;
+  border-radius: 6px;
+  color: #17201a;
+  min-height: 42px;
+  padding: 9px 10px;
+}
+
+.readonly-field strong,
+.readonly-field span {
+  display: block;
+}
+
+.readonly-field span {
+  color: #69766f;
+  font-size: 0.82rem;
+}
+
 .state-message,
 .login-screen {
   align-items: center;

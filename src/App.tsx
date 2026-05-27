@@ -224,6 +224,7 @@ function ProcurementShell({ session }: { session: Session }) {
             )}
             {view === "new-po" && (
               <POForm
+                currentStaff={currentStaff}
                 editingPurchaseOrder={editingPurchaseOrder}
                 references={references}
                 onSaved={refresh}
@@ -927,11 +928,13 @@ function initialsFromName(name?: string | null) {
 }
 
 function POForm({
+  currentStaff,
   editingPurchaseOrder,
   references,
   onSaved,
   onDone,
 }: {
+  currentStaff: StaffMember | null;
   editingPurchaseOrder: PurchaseOrder | null;
   references: ReferenceData;
   onSaved: () => Promise<void>;
@@ -939,17 +942,19 @@ function POForm({
 }) {
   const activeSuppliers = references.suppliers.filter((supplier) => supplier.is_active || supplier.id === editingPurchaseOrder?.supplier_id);
   const activeProjects = references.projects.filter((project) => project.is_active || project.id === editingPurchaseOrder?.project_id);
-  const activeStaff = references.staff.filter(
-    (member) => member.is_active || member.id === editingPurchaseOrder?.requester_id,
-  );
   const activeCategories = references.categories.filter(
     (category) => category.is_active || category.id === editingPurchaseOrder?.category_id,
   );
 
   const [supplierId, setSupplierId] = useState(editingPurchaseOrder?.supplier_id ?? activeSuppliers[0]?.id ?? "");
   const [projectId, setProjectId] = useState(editingPurchaseOrder?.project_id ?? activeProjects[0]?.id ?? "");
+  const requesterId = editingPurchaseOrder?.requester_id ?? currentStaff?.id ?? "";
+  const requesterName = editingPurchaseOrder?.requester?.full_name ?? currentStaff?.full_name ?? "No matching staff record";
+  const requesterInitials =
+    editingPurchaseOrder?.requester?.initials ||
+    currentStaff?.initials ||
+    initialsFromName(editingPurchaseOrder?.requester?.full_name ?? currentStaff?.full_name);
   const [form, setForm] = useState({
-    requester_id: editingPurchaseOrder?.requester_id ?? activeStaff[0]?.id ?? "",
     category_id: editingPurchaseOrder?.category_id ?? activeCategories[0]?.id ?? "",
     po_date: editingPurchaseOrder?.po_date ?? isoToday(),
     delivery_date: editingPurchaseOrder?.delivery_date ?? "",
@@ -1006,6 +1011,10 @@ function POForm({
       setError("Select a supplier and project before creating a purchase order.");
       return;
     }
+    if (!requesterId) {
+      setError("Your signed-in email must match a staff record before you can create a purchase order.");
+      return;
+    }
     const cleanLines = lines.filter((line) => line.description.trim());
     if (!cleanLines.length) {
       setError("Add at least one line item description.");
@@ -1015,7 +1024,7 @@ function POForm({
     const draft: PurchaseOrderDraft = {
       project_id: project.id,
       supplier_id: supplier.id,
-      requester_id: form.requester_id || null,
+      requester_id: requesterId,
       category_id: form.category_id || null,
       status: editingPurchaseOrder?.status ?? "draft",
       po_date: form.po_date,
@@ -1083,14 +1092,10 @@ function POForm({
           </label>
           <label>
             Requester
-            <select value={form.requester_id} onChange={(event) => setForm({ ...form, requester_id: event.target.value })}>
-              <option value="">Select requester</option>
-              {activeStaff.map((member) => (
-                <option value={member.id} key={member.id}>
-                  {member.full_name}
-                </option>
-              ))}
-            </select>
+            <div className="readonly-field">
+              <strong>{requesterName}</strong>
+              <span>{requesterInitials || "Initials missing"}</span>
+            </div>
           </label>
           <label>
             Cost category
