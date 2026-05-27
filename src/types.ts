@@ -77,7 +77,6 @@ export type PurchaseOrder = {
   project_id: string;
   supplier_id: string;
   requester_id: string | null;
-  approver_id: string | null;
   category_id: string | null;
   status: PurchaseOrderStatus;
   po_date: string;
@@ -100,7 +99,6 @@ export type PurchaseOrder = {
   supplier?: Supplier | null;
   project?: Project | null;
   requester?: StaffMember | null;
-  approver?: StaffMember | null;
   category?: CostCategory | null;
   line_items?: PurchaseOrderLineItem[];
 };

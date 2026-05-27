@@ -17,7 +17,6 @@ const poSelect = `
   supplier:suppliers(*),
   project:projects(*),
   requester:staff_members!purchase_orders_requester_id_fkey(*),
-  approver:staff_members!purchase_orders_approver_id_fkey(*),
   category:cost_categories(*),
   line_items:purchase_order_line_items(*)
 `;
@@ -108,7 +107,6 @@ export type PurchaseOrderDraft = {
   project_id: string;
   supplier_id: string;
   requester_id: string | null;
-  approver_id: string | null;
   category_id: string | null;
   status: PurchaseOrderStatus;
   po_date: string;

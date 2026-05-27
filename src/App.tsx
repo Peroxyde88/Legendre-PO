@@ -940,10 +940,7 @@ function POForm({
   const activeSuppliers = references.suppliers.filter((supplier) => supplier.is_active || supplier.id === editingPurchaseOrder?.supplier_id);
   const activeProjects = references.projects.filter((project) => project.is_active || project.id === editingPurchaseOrder?.project_id);
   const activeStaff = references.staff.filter(
-    (member) =>
-      member.is_active ||
-      member.id === editingPurchaseOrder?.requester_id ||
-      member.id === editingPurchaseOrder?.approver_id,
+    (member) => member.is_active || member.id === editingPurchaseOrder?.requester_id,
   );
   const activeCategories = references.categories.filter(
     (category) => category.is_active || category.id === editingPurchaseOrder?.category_id,
@@ -953,7 +950,6 @@ function POForm({
   const [projectId, setProjectId] = useState(editingPurchaseOrder?.project_id ?? activeProjects[0]?.id ?? "");
   const [form, setForm] = useState({
     requester_id: editingPurchaseOrder?.requester_id ?? activeStaff[0]?.id ?? "",
-    approver_id: editingPurchaseOrder?.approver_id ?? "",
     category_id: editingPurchaseOrder?.category_id ?? activeCategories[0]?.id ?? "",
     po_date: editingPurchaseOrder?.po_date ?? isoToday(),
     delivery_date: editingPurchaseOrder?.delivery_date ?? "",
@@ -1020,7 +1016,6 @@ function POForm({
       project_id: project.id,
       supplier_id: supplier.id,
       requester_id: form.requester_id || null,
-      approver_id: form.approver_id || null,
       category_id: form.category_id || null,
       status: editingPurchaseOrder?.status ?? "draft",
       po_date: form.po_date,
@@ -1090,17 +1085,6 @@ function POForm({
             Requester
             <select value={form.requester_id} onChange={(event) => setForm({ ...form, requester_id: event.target.value })}>
               <option value="">Select requester</option>
-              {activeStaff.map((member) => (
-                <option value={member.id} key={member.id}>
-                  {member.full_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Approver
-            <select value={form.approver_id} onChange={(event) => setForm({ ...form, approver_id: event.target.value })}>
-              <option value="">Select approver</option>
               {activeStaff.map((member) => (
                 <option value={member.id} key={member.id}>
                   {member.full_name}
