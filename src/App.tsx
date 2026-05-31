@@ -118,6 +118,7 @@ function ProcurementShell({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingPurchaseOrder, setEditingPurchaseOrder] = useState<PurchaseOrder | null>(null);
+  const [previewPurchaseOrder, setPreviewPurchaseOrder] = useState<PurchaseOrder | null>(null);
 
   const currentStaff = useMemo(() => {
     const email = session.user.email?.toLowerCase();
@@ -135,11 +136,26 @@ function ProcurementShell({ session }: { session: Session }) {
       const [nextRefs, nextPos] = await Promise.all([loadReferenceData(), loadPurchaseOrders()]);
       setReferences(nextRefs);
       setPurchaseOrders(nextPos);
+      return { references: nextRefs, purchaseOrders: nextPos };
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load procurement data.");
+      return null;
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handlePurchaseOrderSaved(savedPurchaseOrderId: string) {
+    const refreshed = await refresh();
+    const savedPurchaseOrder = refreshed?.purchaseOrders.find((po) => po.id === savedPurchaseOrderId);
+
+    setEditingPurchaseOrder(null);
+    setView("purchase-orders");
+    if (savedPurchaseOrder) setPreviewPurchaseOrder(savedPurchaseOrder);
+  }
+
+  async function refreshView() {
+    await refresh();
   }
 
   useEffect(() => {
@@ -220,6 +236,7 @@ function ProcurementShell({ session }: { session: Session }) {
                   setEditingPurchaseOrder(po);
                   setView("new-po");
                 }}
+                onPreview={setPreviewPurchaseOrder}
               />
             )}
             {view === "new-po" && (
@@ -227,7 +244,7 @@ function ProcurementShell({ session }: { session: Session }) {
                 currentStaff={currentStaff}
                 editingPurchaseOrder={editingPurchaseOrder}
                 references={references}
-                onSaved={refresh}
+                onSaved={handlePurchaseOrderSaved}
                 onDone={() => {
                   setEditingPurchaseOrder(null);
                   setView("purchase-orders");
@@ -252,7 +269,7 @@ function ProcurementShell({ session }: { session: Session }) {
                 ]}
                 onSave={upsertSupplier}
                 onDelete={(id) => deleteRow("suppliers", id)}
-                onRefresh={refresh}
+                onRefresh={refreshView}
               />
             )}
             {view === "projects" && (
@@ -270,11 +287,11 @@ function ProcurementShell({ session }: { session: Session }) {
                 ]}
                 onSave={upsertProject}
                 onDelete={(id) => deleteRow("projects", id)}
-                onRefresh={refresh}
+                onRefresh={refreshView}
               />
             )}
             {view === "staff" && (
-              <StaffAdminView staff={references.staff} onRefresh={refresh} />
+              <StaffAdminView staff={references.staff} onRefresh={refreshView} />
             )}
             {view === "categories" && (
               <AdminPanel
@@ -289,14 +306,21 @@ function ProcurementShell({ session }: { session: Session }) {
                 ]}
                 onSave={upsertCategory}
                 onDelete={(id) => deleteRow("cost_categories", id)}
-                onRefresh={refresh}
+                onRefresh={refreshView}
               />
             )}
             {view === "settings" && (
-              <SettingsPanel settings={references.settings} onSave={upsertSetting} onRefresh={refresh} />
+              <SettingsPanel settings={references.settings} onSave={upsertSetting} onRefresh={refreshView} />
             )}
             {view === "exports" && <Exports references={references} purchaseOrders={purchaseOrders} />}
           </>
+        )}
+        {previewPurchaseOrder && (
+          <PreviewModal
+            po={previewPurchaseOrder}
+            settings={references.settings}
+            onClose={() => setPreviewPurchaseOrder(null)}
+          />
         )}
       </main>
     </div>
@@ -824,13 +848,14 @@ function PurchaseOrders({
   references,
   canWrite,
   onEdit,
+  onPreview,
 }: {
   purchaseOrders: PurchaseOrder[];
   references: ReferenceData;
   canWrite: boolean;
   onEdit: (po: PurchaseOrder) => void;
+  onPreview: (po: PurchaseOrder) => void;
 }) {
-  const [preview, setPreview] = useState<PurchaseOrder | null>(null);
   const [projectFilter, setProjectFilter] = useState("");
   const [requesterFilter, setRequesterFilter] = useState("");
   const filteredPurchaseOrders = useMemo(
@@ -892,7 +917,7 @@ function PurchaseOrders({
                 <td>{po.supplier?.supplier_name}</td>
                 <td>{money(po.grand_total)}</td>
                 <td className="actions-cell">
-                  <button className="icon-button" onClick={() => setPreview(po)} title="Preview">
+                  <button className="icon-button" onClick={() => onPreview(po)} title="Preview">
                     <Eye size={16} />
                   </button>
                   <button className="icon-button" disabled={!canWrite} onClick={() => onEdit(po)} title="Edit">
@@ -911,7 +936,6 @@ function PurchaseOrders({
           </tbody>
         </table>
       </div>
-      {preview && <PreviewModal po={preview} settings={references.settings} onClose={() => setPreview(null)} />}
     </section>
   );
 }
@@ -937,7 +961,7 @@ function POForm({
   currentStaff: StaffMember | null;
   editingPurchaseOrder: PurchaseOrder | null;
   references: ReferenceData;
-  onSaved: () => Promise<void>;
+  onSaved: (savedPurchaseOrderId: string) => Promise<void>;
   onDone: () => void;
 }) {
   const activeSuppliers = references.suppliers.filter((supplier) => supplier.is_active || supplier.id === editingPurchaseOrder?.supplier_id);
@@ -1044,13 +1068,13 @@ function POForm({
 
     try {
       setBusy(true);
+      let savedPurchaseOrderId = editingPurchaseOrder?.id;
       if (editingPurchaseOrder) {
         await updatePurchaseOrder(editingPurchaseOrder.id, draft);
       } else {
-        await createPurchaseOrder(draft);
+        savedPurchaseOrderId = await createPurchaseOrder(draft);
       }
-      await onSaved();
-      onDone();
+      if (savedPurchaseOrderId) await onSaved(savedPurchaseOrderId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save purchase order.");
     } finally {
