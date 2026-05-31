@@ -9,6 +9,7 @@ import type {
   PurchaseOrderStatus,
   ReferenceData,
   StaffMember,
+  StaffProjectAccess,
   Supplier,
 } from "../types";
 
@@ -28,15 +29,16 @@ function requireClient() {
 
 export async function loadReferenceData(): Promise<ReferenceData> {
   const client = requireClient();
-  const [suppliers, projects, staff, categories, settings] = await Promise.all([
+  const [suppliers, projects, staff, projectAccess, categories, settings] = await Promise.all([
     client.from("suppliers").select("*").order("supplier_name"),
     client.from("projects").select("*").order("project_name"),
     client.from("staff_members").select("*").order("full_name"),
+    client.from("staff_project_access").select("*"),
     client.from("cost_categories").select("*").order("category_name"),
     client.from("app_settings").select("*").order("setting_key"),
   ]);
 
-  for (const result of [suppliers, projects, staff, categories, settings]) {
+  for (const result of [suppliers, projects, staff, projectAccess, categories, settings]) {
     if (result.error) throw result.error;
   }
 
@@ -44,6 +46,7 @@ export async function loadReferenceData(): Promise<ReferenceData> {
     suppliers: (suppliers.data ?? []) as Supplier[],
     projects: (projects.data ?? []) as Project[],
     staff: (staff.data ?? []) as StaffMember[],
+    projectAccess: (projectAccess.data ?? []) as StaffProjectAccess[],
     categories: (categories.data ?? []) as CostCategory[],
     settings: (settings.data ?? []) as AppSetting[],
   };
@@ -77,6 +80,45 @@ export async function upsertStaff(payload: Partial<StaffMember>) {
   return upsertRow("staff_members", payload);
 }
 
+export async function saveStaffMember(payload: Partial<StaffMember>, projectIds: string[]) {
+  const client = requireClient();
+  const cleanPayload = Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined),
+  ) as Partial<StaffMember>;
+
+  const staffResult = cleanPayload.id
+    ? await client
+        .from("staff_members")
+        .update(cleanPayload)
+        .eq("id", cleanPayload.id)
+        .select("id")
+        .single()
+    : await client
+        .from("staff_members")
+        .insert(cleanPayload)
+        .select("id")
+        .single();
+
+  if (staffResult.error) throw staffResult.error;
+
+  const staffId = staffResult.data.id as string;
+  const { error: deleteError } = await client
+    .from("staff_project_access")
+    .delete()
+    .eq("staff_member_id", staffId);
+  if (deleteError) throw deleteError;
+
+  const rows = projectIds.map((projectId) => ({
+    staff_member_id: staffId,
+    project_id: projectId,
+  }));
+
+  if (rows.length) {
+    const { error } = await client.from("staff_project_access").insert(rows);
+    if (error) throw error;
+  }
+}
+
 export async function upsertCategory(payload: Partial<CostCategory>) {
   return upsertRow("cost_categories", payload);
 }
@@ -88,6 +130,16 @@ export async function upsertSetting(payload: Partial<AppSetting>) {
 export async function deleteRow(table: string, id: string, key = "id") {
   const client = requireClient();
   const { error } = await client.from(table).delete().eq(key, id);
+  if (error) throw error;
+}
+
+export async function requestStaffAccess(payload: { email: string; fullName: string; initials: string }) {
+  const client = requireClient();
+  const { error } = await client.rpc("request_staff_access", {
+    request_email: payload.email,
+    request_full_name: payload.fullName,
+    request_initials: payload.initials,
+  });
   if (error) throw error;
 }
 
@@ -193,5 +245,9 @@ export function roleCanAdmin(role: AppRole | null | undefined) {
 }
 
 export function roleCanWritePo(role: AppRole | null | undefined) {
-  return role === "admin" || role === "standard";
+  return role === "admin" || role === "user" || role === "standard";
+}
+
+export function normalizeRole(role: AppRole | null | undefined): AppRole {
+  return role === "standard" ? "user" : role ?? "viewer";
 }

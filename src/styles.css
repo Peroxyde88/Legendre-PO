@@ -218,6 +218,10 @@ th {
   background: #1f5f4a;
 }
 
+.role-pill.user {
+  background: #1f5f4a;
+}
+
 .role-pill.viewer {
   background: #69746f;
 }
@@ -352,6 +356,54 @@ th {
   padding: 26px;
   text-align: left;
   width: 100%;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.link-button {
+  background: transparent;
+  color: #1d5d49;
+  justify-content: center;
+  padding: 4px;
+  text-decoration: underline;
+}
+
+.link-button:hover {
+  background: transparent;
+}
+
+.project-access-list {
+  border: 1px solid #d8e2dc;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  margin: 0;
+  padding: 12px;
+}
+
+.project-access-list legend {
+  color: #5b6962;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0 6px;
+}
+
+.project-access-list label {
+  align-items: center;
+  color: #17201a;
+  display: flex;
+  flex-direction: row;
+  font-size: 0.9rem;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.project-access-list input {
+  width: auto;
 }
 
 .kpi-grid {
@@ -708,7 +760,8 @@ th {
   .filters,
   .kpi-grid,
   .dashboard-grid,
-  .export-grid {
+  .export-grid,
+  .project-access-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -736,7 +789,8 @@ th {
   .filters,
   .kpi-grid,
   .dashboard-grid,
-  .export-grid {
+  .export-grid,
+  .project-access-list {
     grid-template-columns: 1fr;
   }
 

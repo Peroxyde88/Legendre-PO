@@ -28,13 +28,15 @@ import {
   deleteRow,
   loadPurchaseOrders,
   loadReferenceData,
+  normalizeRole,
+  requestStaffAccess,
   roleCanAdmin,
   roleCanWritePo,
+  saveStaffMember,
   updatePurchaseOrder,
   upsertCategory,
   upsertProject,
   upsertSetting,
-  upsertStaff,
   upsertSupplier,
   type PurchaseOrderDraft,
 } from "./lib/data";
@@ -78,6 +80,7 @@ const emptyReferences: ReferenceData = {
   suppliers: [],
   projects: [],
   staff: [],
+  projectAccess: [],
   categories: [],
   settings: [],
 };
@@ -125,9 +128,10 @@ function ProcurementShell({ session }: { session: Session }) {
     return references.staff.find((member) => member.email.toLowerCase() === email) ?? null;
   }, [references.staff, session.user.email]);
 
-  const role: AppRole = "admin";
+  const role: AppRole = currentStaff?.is_active ? normalizeRole(currentStaff.role) : "viewer";
   const canAdmin = roleCanAdmin(role);
   const canWritePo = roleCanWritePo(role);
+  const canManageSuppliers = canAdmin || canWritePo;
 
   async function refresh() {
     setLoading(true);
@@ -166,7 +170,7 @@ function ProcurementShell({ session }: { session: Session }) {
     { key: "dashboard", label: "Dashboard", icon: BarChart3 },
     { key: "purchase-orders", label: "Purchase Orders", icon: ClipboardList },
     { key: "new-po", label: "New PO", icon: FilePlus2, disabled: !canWritePo },
-    { key: "suppliers", label: "Suppliers", icon: Package, disabled: !canAdmin },
+    { key: "suppliers", label: "Suppliers", icon: Package, disabled: !canManageSuppliers },
     { key: "projects", label: "Projects", icon: Building2, disabled: !canAdmin },
     { key: "staff", label: "Staff", icon: Users, disabled: !canAdmin },
     { key: "categories", label: "Categories", icon: Archive, disabled: !canAdmin },
@@ -224,6 +228,8 @@ function ProcurementShell({ session }: { session: Session }) {
         {error && <div className="notice error">{error}</div>}
         {loading ? (
           <FullScreenMessage title="Loading live Supabase data" compact />
+        ) : !currentStaff?.is_active ? (
+          <PendingAccessScreen email={session.user.email ?? ""} staff={currentStaff} onSignOut={() => supabase?.auth.signOut()} />
         ) : (
           <>
             {view === "dashboard" && <Dashboard purchaseOrders={purchaseOrders} references={references} />}
@@ -270,6 +276,9 @@ function ProcurementShell({ session }: { session: Session }) {
                 onSave={upsertSupplier}
                 onDelete={(id) => deleteRow("suppliers", id)}
                 onRefresh={refreshView}
+                allowCreate={canManageSuppliers}
+                allowEdit={canAdmin}
+                allowDelete={canAdmin}
               />
             )}
             {view === "projects" && (
@@ -291,7 +300,7 @@ function ProcurementShell({ session }: { session: Session }) {
               />
             )}
             {view === "staff" && (
-              <StaffAdminView staff={references.staff} onRefresh={refreshView} />
+              <StaffAdminView references={references} onRefresh={refreshView} />
             )}
             {view === "categories" && (
               <AdminPanel
@@ -346,9 +355,38 @@ function FullScreenMessage({ title, detail, compact }: { title: string; detail?:
   );
 }
 
+function PendingAccessScreen({
+  email,
+  staff,
+  onSignOut,
+}: {
+  email: string;
+  staff: StaffMember | null;
+  onSignOut: () => void;
+}) {
+  return (
+    <div className="state-message compact">
+      <Shield size={30} />
+      <h2>Access pending</h2>
+      <p>
+        {staff
+          ? `${staff.full_name} is registered, but an admin still needs to activate the account and assign project access.`
+          : `No staff access request was found for ${email}. Ask an admin to add or approve your staff record.`}
+      </p>
+      <button className="secondary" onClick={onSignOut}>
+        <LogOut size={16} />
+        Sign out
+      </button>
+    </div>
+  );
+}
+
 function LoginScreen() {
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [initials, setInitials] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -364,6 +402,33 @@ function LoginScreen() {
     setMessage(error ? error.message : mode === "magic" ? "Magic link sent." : null);
   }
 
+  async function register(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return;
+
+    setBusy(true);
+    setMessage(null);
+    try {
+      await requestStaffAccess({ email, fullName, initials });
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: true,
+          data: {
+            full_name: fullName,
+            initials,
+          },
+        },
+      });
+
+      setMessage(error ? error.message : "Account request recorded. Check your email, then wait for an admin to grant access.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Unable to request access.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="login-screen">
       <section className="login-panel">
@@ -371,24 +436,56 @@ function LoginScreen() {
           <img className="brand-logo" src={legendreLogo} alt="Legendre" />
           <span>Procurement System</span>
         </div>
-        <label>
-          Email
-          <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
-        </label>
-        <label>
-          Password
-          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" />
-        </label>
-        <div className="button-row">
-          <button disabled={busy || !email || !password} onClick={() => signIn("password")}>
-            <Check size={16} />
-            Sign in
-          </button>
-          <button className="secondary" disabled={busy || !email} onClick={() => signIn("magic")}>
-            <FilePlus2 size={16} />
-            Magic link
-          </button>
-        </div>
+        {mode === "login" ? (
+          <>
+            <label>
+              Email
+              <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
+            </label>
+            <label>
+              Password
+              <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" />
+            </label>
+            <div className="button-row">
+              <button disabled={busy || !email || !password} onClick={() => signIn("password")}>
+                <Check size={16} />
+                Sign in
+              </button>
+              <button className="secondary" disabled={busy || !email} onClick={() => signIn("magic")}>
+                <FilePlus2 size={16} />
+                Magic link
+              </button>
+            </div>
+            <button type="button" className="link-button" onClick={() => setMode("register")}>
+              Create a new account
+            </button>
+          </>
+        ) : (
+          <form className="login-form" onSubmit={register}>
+            <label>
+              Email
+              <input required value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
+            </label>
+            <label>
+              Full name
+              <input required value={fullName} onChange={(event) => setFullName(event.target.value)} />
+            </label>
+            <label>
+              Initials
+              <input required value={initials} onChange={(event) => setInitials(event.target.value.toUpperCase())} />
+            </label>
+            <div className="button-row">
+              <button disabled={busy || !email || !fullName || !initials} type="submit">
+                <FilePlus2 size={16} />
+                Request access
+              </button>
+              <button type="button" className="secondary" onClick={() => setMode("login")}>
+                <X size={16} />
+                Back
+              </button>
+            </div>
+          </form>
+        )}
         {message && <div className="notice">{message}</div>}
       </section>
     </div>
@@ -411,6 +508,9 @@ function AdminPanel<T extends { id: string; is_active?: boolean } & Record<strin
   onSave,
   onDelete,
   onRefresh,
+  allowCreate = true,
+  allowEdit = true,
+  allowDelete = true,
 }: {
   title: string;
   rows: T[];
@@ -419,6 +519,9 @@ function AdminPanel<T extends { id: string; is_active?: boolean } & Record<strin
   onSave: (payload: Partial<T>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
+  allowCreate?: boolean;
+  allowEdit?: boolean;
+  allowDelete?: boolean;
 }) {
   const [editing, setEditing] = useState<Partial<T> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -460,10 +563,12 @@ function AdminPanel<T extends { id: string; is_active?: boolean } & Record<strin
           <p className="eyebrow">Admin database</p>
           <h2>{title}</h2>
         </div>
-        <button onClick={() => setEditing({ is_active: true } as Partial<T>)}>
-          <Plus size={16} />
-          New
-        </button>
+        {allowCreate && (
+          <button onClick={() => setEditing({ is_active: true } as Partial<T>)}>
+            <Plus size={16} />
+            New
+          </button>
+        )}
       </div>
       {error && <div className="notice error">{error}</div>}
       {editing && (
@@ -513,8 +618,8 @@ function AdminPanel<T extends { id: string; is_active?: boolean } & Record<strin
         rows={rows}
         columns={fields.slice(0, 5).map((field) => ({ key: field.name, label: field.label }))}
         identity={identity}
-        onEdit={(row) => setEditing(row)}
-        onDelete={(row) => remove(row.id)}
+        onEdit={allowEdit ? (row) => setEditing(row) : undefined}
+        onDelete={allowDelete ? (row) => remove(row.id) : undefined}
       />
     </section>
   );
@@ -601,32 +706,174 @@ function SettingsPanel({
   );
 }
 
-function StaffAdminView({ staff, onRefresh }: { staff: StaffMember[]; onRefresh: () => Promise<void> }) {
+function StaffAdminView({ references, onRefresh }: { references: ReferenceData; onRefresh: () => Promise<void> }) {
+  const [editing, setEditing] = useState<Partial<StaffMember> | null>(null);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  function editStaff(member?: StaffMember) {
+    setEditing(member ?? { role: "user", is_active: false });
+    setSelectedProjects(
+      member
+        ? references.projectAccess
+            .filter((access) => access.staff_member_id === member.id)
+            .map((access) => access.project_id)
+        : [],
+    );
+  }
+
+  function toggleProject(projectId: string) {
+    setSelectedProjects((current) =>
+      current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId],
+    );
+  }
+
+  function projectSummary(member: StaffMember) {
+    if (normalizeRole(member.role) === "admin") return "All projects";
+    const names = references.projectAccess
+      .filter((access) => access.staff_member_id === member.id)
+      .map((access) => references.projects.find((project) => project.id === access.project_id)?.project_name)
+      .filter(Boolean);
+
+    return names.length ? names.join(", ") : "No projects";
+  }
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const role = String(form.get("role") || "user") as AppRole;
+    const payload: Partial<StaffMember> = {
+      id: editing?.id,
+      full_name: String(form.get("full_name") ?? "").trim(),
+      initials: String(form.get("initials") ?? "").trim().toUpperCase() || null,
+      email: String(form.get("email") ?? "").trim().toLowerCase(),
+      role,
+      is_active: form.get("is_active") === "on",
+    };
+
+    try {
+      await saveStaffMember(payload, role === "admin" ? [] : selectedProjects);
+      setEditing(null);
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save staff member.");
+    }
+  }
+
+  async function remove(id: string) {
+    if (!confirm("Delete this staff member?")) return;
+    try {
+      await deleteRow("staff_members", id);
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete staff member.");
+    }
+  }
+
   return (
-    <AdminPanel
-      title="Staff / Users"
-      rows={staff}
-      identity="full_name"
-      fields={[
-        { name: "full_name", label: "Full name", required: true },
-        { name: "initials", label: "Initials / code" },
-        { name: "email", label: "Email", type: "email", required: true },
-        {
-          name: "role",
-          label: "Role",
-          type: "select",
-          options: [
-            { value: "admin", label: "Admin" },
-            { value: "standard", label: "Standard user" },
-            { value: "viewer", label: "Viewer" },
-          ],
-        },
-        { name: "is_active", label: "Active", type: "checkbox" },
-      ]}
-      onSave={upsertStaff}
-      onDelete={(id) => deleteRow("staff_members", id)}
-      onRefresh={onRefresh}
-    />
+    <section className="work-section">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Admin database</p>
+          <h2>Staff / Users</h2>
+        </div>
+        <button onClick={() => editStaff()}>
+          <Plus size={16} />
+          New
+        </button>
+      </div>
+      {error && <div className="notice error">{error}</div>}
+      {editing && (
+        <form className="editor-grid" onSubmit={submit}>
+          <label>
+            Full name
+            <input name="full_name" required defaultValue={editing.full_name ?? ""} />
+          </label>
+          <label>
+            Initials / code
+            <input name="initials" defaultValue={editing.initials ?? ""} />
+          </label>
+          <label>
+            Email
+            <input name="email" required type="email" defaultValue={editing.email ?? ""} />
+          </label>
+          <label>
+            Role
+            <select name="role" defaultValue={normalizeRole(editing.role)}>
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <label>
+            Active access
+            <input name="is_active" type="checkbox" defaultChecked={Boolean(editing.is_active)} />
+          </label>
+          <fieldset className="project-access-list wide">
+            <legend>Project access</legend>
+            {references.projects.map((project) => (
+              <label key={project.id}>
+                <input
+                  checked={selectedProjects.includes(project.id)}
+                  onChange={() => toggleProject(project.id)}
+                  type="checkbox"
+                />
+                <span>{project.project_name}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="button-row wide">
+            <button type="submit">
+              <Save size={16} />
+              Save access
+            </button>
+            <button type="button" className="secondary" onClick={() => setEditing(null)}>
+              <X size={16} />
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Full name</th>
+              <th>Initials</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Projects</th>
+              <th className="actions-cell">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {references.staff.map((member) => (
+              <tr key={member.id}>
+                <td>{member.full_name}</td>
+                <td>{member.initials}</td>
+                <td>{member.email}</td>
+                <td>{normalizeRole(member.role)}</td>
+                <td>{member.is_active ? "Active" : "Pending"}</td>
+                <td>{projectSummary(member)}</td>
+                <td className="actions-cell">
+                  <button className="icon-button" onClick={() => editStaff(member)} title="Edit access">
+                    <Pencil size={16} />
+                  </button>
+                  <button className="icon-button danger" onClick={() => remove(member.id)} title="Delete">
+                    <Trash2 size={16} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!references.staff.length && (
+              <tr>
+                <td colSpan={7}>No staff records yet.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -965,7 +1212,17 @@ function POForm({
   onDone: () => void;
 }) {
   const activeSuppliers = references.suppliers.filter((supplier) => supplier.is_active || supplier.id === editingPurchaseOrder?.supplier_id);
-  const activeProjects = references.projects.filter((project) => project.is_active || project.id === editingPurchaseOrder?.project_id);
+  const accessibleProjectIds = new Set(
+    references.projectAccess
+      .filter((access) => access.staff_member_id === currentStaff?.id)
+      .map((access) => access.project_id),
+  );
+  const canUseAllProjects = normalizeRole(currentStaff?.role) === "admin";
+  const activeProjects = references.projects.filter(
+    (project) =>
+      (project.is_active || project.id === editingPurchaseOrder?.project_id) &&
+      (canUseAllProjects || accessibleProjectIds.has(project.id) || project.id === editingPurchaseOrder?.project_id),
+  );
   const activeCategories = references.categories.filter(
     (category) => category.is_active || category.id === editingPurchaseOrder?.category_id,
   );

@@ -35,9 +35,10 @@ on conflict (email) do update set role = excluded.role, is_active = true;
 
 The staff email must match the Supabase Auth user email. Roles are:
 
-- `admin`: manage suppliers, projects, staff, categories, settings, and POs
-- `standard`: create, view, and update POs
-- `viewer`: view and export records
+- `admin`: approve users, assign project access, manage projects/staff/categories/settings, create suppliers, and create POs for any project
+- `user`: create suppliers and create POs only for assigned projects
+
+New users can request access from the sign-in screen. Their staff record is created as inactive until an admin opens the Staff page, activates the user, sets the role, and assigns one or more projects.
 
 ## Environment Variables
 
@@ -92,7 +93,10 @@ When a change is ready to publish, merge `development` into `main` and push `mai
 
 ## User Access
 
-For this first version, every signed-in Supabase Auth user has full admin access. Add or remove login users from **Supabase → Authentication → Users**. The Staff page remains available as a staff directory, but it is not currently used to restrict permissions.
+Supabase Auth handles sign-in, and the Staff page controls application access. New account requests are inactive until an admin approves them, chooses `admin` or `user`, and assigns project access where required.
+
+- Admins can approve staff, assign projects, manage projects/categories/settings, create suppliers, and create POs for any project.
+- Users can create suppliers and create POs only for projects assigned to them.
 
 ## GitHub Repository
 
@@ -134,3 +138,4 @@ Use the `Print / Save PDF` button in the preview modal and choose the browser's 
 - The first admin is bootstrapped manually with SQL after creating a Supabase Auth user.
 - The supplied PDF was used as a layout and text reference; the recreated template is HTML/CSS for clean browser printing.
 - Approval workflow is status-based in this first version; detailed approval audit trails can be added later.
+

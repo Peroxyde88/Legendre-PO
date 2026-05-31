@@ -1,4 +1,4 @@
-export type AppRole = "admin" | "standard" | "viewer";
+export type AppRole = "admin" | "user" | "standard" | "viewer";
 export type PurchaseOrderStatus = "draft" | "issued" | "approved" | "cancelled" | "archived";
 
 export type Supplier = {
@@ -37,6 +37,13 @@ export type StaffMember = {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+};
+
+export type StaffProjectAccess = {
+  id: string;
+  staff_member_id: string;
+  project_id: string;
+  created_at?: string;
 };
 
 export type CostCategory = {
@@ -107,6 +114,7 @@ export type ReferenceData = {
   suppliers: Supplier[];
   projects: Project[];
   staff: StaffMember[];
+  projectAccess: StaffProjectAccess[];
   categories: CostCategory[];
   settings: AppSetting[];
 };
