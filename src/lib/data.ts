@@ -19,7 +19,7 @@ const poSelect = `
   project:projects(*),
   requester:staff_members!purchase_orders_requester_id_fkey(*),
   category:cost_categories(*),
-  line_items:purchase_order_line_items(*)
+  line_items:purchase_order_line_items(*, category:cost_categories(*))
 `;
 
 function requireClient() {
@@ -133,6 +133,18 @@ export async function deleteRow(table: string, id: string, key = "id") {
   if (error) throw error;
 }
 
+export async function deletePurchaseOrder(id: string) {
+  const client = requireClient();
+  const { error } = await client.from("purchase_orders").delete().eq("id", id).eq("status", "draft");
+  if (error) throw error;
+}
+
+export async function validatePurchaseOrder(id: string) {
+  const client = requireClient();
+  const { error } = await client.from("purchase_orders").update({ status: "validated" }).eq("id", id).eq("status", "draft");
+  if (error) throw error;
+}
+
 export async function requestStaffAccess(payload: { email: string; fullName: string; initials: string }) {
   const client = requireClient();
   const { error } = await client.rpc("request_staff_access", {
@@ -200,6 +212,7 @@ export async function createPurchaseOrder(draft: PurchaseOrderDraft) {
     unit: item.unit,
     rate: item.rate,
     vat_rate: item.vat_rate,
+    category_id: item.category_id,
   }));
 
   const { error: lineError } = await client.from("purchase_order_line_items").insert(rows);
@@ -232,6 +245,7 @@ export async function updatePurchaseOrder(id: string, draft: PurchaseOrderDraft)
     unit: item.unit,
     rate: item.rate,
     vat_rate: item.vat_rate,
+    category_id: item.category_id,
   }));
 
   if (rows.length) {

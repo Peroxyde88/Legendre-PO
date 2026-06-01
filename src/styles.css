@@ -480,6 +480,23 @@ th {
   min-width: 132px;
 }
 
+.status-pill {
+  background: #eef3f0;
+  border-radius: 999px;
+  color: #304138;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 10px;
+  text-transform: capitalize;
+}
+
+.status-pill.validated {
+  background: #e6f4ec;
+  color: #16623a;
+}
+
 .supplier-snapshot {
   background: #f5f8f6;
   border: 1px solid #dbe5df;
@@ -497,7 +514,7 @@ th {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(220px, 3fr) 100px 100px 120px 120px 110px 40px;
+  grid-template-columns: minmax(220px, 3fr) minmax(150px, 1.4fr) 90px 90px 110px 110px 100px 40px;
   margin-bottom: 8px;
 }
 

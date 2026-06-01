@@ -3,10 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   Archive,
+  ArrowRight,
   BarChart3,
   Building2,
   Check,
   ClipboardList,
+  Copy,
   Download,
   Eye,
   FilePlus2,
@@ -25,6 +27,7 @@ import {
 } from "lucide-react";
 import {
   createPurchaseOrder,
+  deletePurchaseOrder,
   deleteRow,
   loadPurchaseOrders,
   loadReferenceData,
@@ -34,6 +37,7 @@ import {
   roleCanWritePo,
   saveStaffMember,
   updatePurchaseOrder,
+  validatePurchaseOrder,
   upsertCategory,
   upsertProject,
   upsertSetting,
@@ -85,7 +89,7 @@ const emptyReferences: ReferenceData = {
   settings: [],
 };
 
-const statuses: PurchaseOrderStatus[] = ["draft", "issued", "approved", "cancelled", "archived"];
+const statuses: PurchaseOrderStatus[] = ["draft", "validated"];
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -169,6 +173,81 @@ function ProcurementShell({ session }: { session: Session }) {
     await refresh();
   }
 
+  async function handleValidatePurchaseOrder(po: PurchaseOrder) {
+    if (po.status !== "draft") return;
+    const confirmed = window.confirm(`Validate purchase order ${po.po_number}? This will lock it from further editing.`);
+    if (!confirmed) return;
+
+    setError(null);
+    try {
+      await validatePurchaseOrder(po.id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to validate purchase order.");
+    }
+  }
+
+  async function handleDeletePurchaseOrder(po: PurchaseOrder) {
+    if (po.status !== "draft") return;
+    const confirmed = window.confirm(`Delete draft purchase order ${po.po_number}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setError(null);
+    try {
+      await deletePurchaseOrder(po.id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete purchase order.");
+    }
+  }
+
+  async function handleCopyPurchaseOrder(po: PurchaseOrder) {
+    if (!currentStaff) {
+      setError("Your signed-in email must match a staff record before you can copy a purchase order.");
+      return;
+    }
+
+    setError(null);
+    const draft: PurchaseOrderDraft = {
+      project_id: po.project_id,
+      supplier_id: po.supplier_id,
+      requester_id: currentStaff.id,
+      category_id: null,
+      status: "draft",
+      po_date: isoToday(),
+      delivery_date: po.delivery_date,
+      delivery_address: po.delivery_address,
+      supplier_contact_name: po.supplier_contact_name,
+      supplier_email: po.supplier_email,
+      supplier_phone: po.supplier_phone,
+      supplier_address: po.supplier_address,
+      site_contact: po.site_contact,
+      vehicle_requirements: po.vehicle_requirements,
+      offloading_instructions: po.offloading_instructions,
+      delivery_instructions: po.delivery_instructions,
+      notes: po.notes,
+      line_items: (po.line_items ?? []).map((line, index) => ({
+        sort_order: index + 1,
+        description: line.description,
+        quantity: Number(line.quantity),
+        unit: line.unit,
+        rate: Number(line.rate),
+        vat_rate: Number(line.vat_rate),
+        category_id: line.category_id ?? po.category_id ?? null,
+      })),
+    };
+
+    try {
+      const copiedPurchaseOrderId = await createPurchaseOrder(draft);
+      const refreshed = await refresh();
+      const copiedPurchaseOrder = refreshed?.purchaseOrders.find((item) => item.id === copiedPurchaseOrderId);
+      if (copiedPurchaseOrder) setPreviewPurchaseOrder(copiedPurchaseOrder);
+      setView("purchase-orders");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to copy purchase order.");
+    }
+  }
+
   useEffect(() => {
     refresh();
   }, []);
@@ -249,7 +328,10 @@ function ProcurementShell({ session }: { session: Session }) {
                   setEditingPurchaseOrder(po);
                   setView("new-po");
                 }}
+                onCopy={handleCopyPurchaseOrder}
+                onDelete={handleDeletePurchaseOrder}
                 onPreview={setPreviewPurchaseOrder}
+                onValidate={handleValidatePurchaseOrder}
               />
             )}
             {view === "new-po" && (
@@ -1114,12 +1196,12 @@ function Dashboard({ purchaseOrders, references }: { purchaseOrders: PurchaseOrd
         <Kpi label="Total PO value" value={money(total)} />
         <Kpi label="POs created" value={String(filtered.length)} />
         <Kpi label="Average PO" value={money(average)} />
-        <Kpi label="Approved value" value={money(filtered.filter((po) => po.status === "approved").reduce((sum, po) => sum + po.grand_total, 0))} />
+        <Kpi label="Validated value" value={money(filtered.filter((po) => po.status === "validated").reduce((sum, po) => sum + po.grand_total, 0))} />
       </div>
       <div className="dashboard-grid">
         <SpendPanel title="Spend by project" rows={groupSpend(filtered, (po) => po.project?.project_name ?? "Unassigned")} />
         <SpendPanel title="Spend by supplier" rows={groupSpend(filtered, (po) => po.supplier?.supplier_name ?? "Unassigned")} />
-        <SpendPanel title="Spend by cost category" rows={groupSpend(filtered, (po) => po.category?.category_name ?? "Unassigned")} />
+        <SpendPanel title="Spend by cost category" rows={groupLineSpend(filtered)} />
         <RecentOrders purchaseOrders={filtered.slice(0, 8)} />
       </div>
     </section>
@@ -1200,6 +1282,23 @@ function groupSpend(purchaseOrders: PurchaseOrder[], labelFor: (po: PurchaseOrde
     .slice(0, 8);
 }
 
+function groupLineSpend(purchaseOrders: PurchaseOrder[]) {
+  const grouped = new Map<string, number>();
+
+  purchaseOrders.forEach((po) => {
+    (po.line_items ?? []).forEach((line) => {
+      const label = line.category?.category_name ?? "Unassigned";
+      const value = Number(line.gross_total ?? line.quantity * line.rate * (1 + line.vat_rate / 100));
+      grouped.set(label, (grouped.get(label) ?? 0) + value);
+    });
+  });
+
+  return [...grouped.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+}
+
 function SpendPanel({ title, rows }: { title: string; rows: { label: string; value: number }[] }) {
   const max = Math.max(...rows.map((row) => row.value), 1);
   return (
@@ -1242,14 +1341,20 @@ function PurchaseOrders({
   purchaseOrders,
   references,
   canWrite,
+  onCopy,
+  onDelete,
   onEdit,
   onPreview,
+  onValidate,
 }: {
   purchaseOrders: PurchaseOrder[];
   references: ReferenceData;
   canWrite: boolean;
+  onCopy: (po: PurchaseOrder) => void;
+  onDelete: (po: PurchaseOrder) => void;
   onEdit: (po: PurchaseOrder) => void;
   onPreview: (po: PurchaseOrder) => void;
+  onValidate: (po: PurchaseOrder) => void;
 }) {
   const [projectFilter, setProjectFilter] = useState("");
   const [requesterFilter, setRequesterFilter] = useState("");
@@ -1298,6 +1403,7 @@ function PurchaseOrders({
               <th>Initials</th>
               <th>Project</th>
               <th>Supplier</th>
+              <th>Status</th>
               <th>Total</th>
               <th className="actions-cell">Actions</th>
             </tr>
@@ -1310,20 +1416,32 @@ function PurchaseOrders({
                 <td>{po.requester?.initials || initialsFromName(po.requester?.full_name) || "-"}</td>
                 <td>{po.project?.project_name}</td>
                 <td>{po.supplier?.supplier_name}</td>
+                <td>
+                  <span className={`status-pill ${po.status}`}>{po.status}</span>
+                </td>
                 <td>{money(po.grand_total)}</td>
                 <td className="actions-cell">
                   <button className="icon-button" onClick={() => onPreview(po)} title="Preview">
                     <Eye size={16} />
                   </button>
-                  <button className="icon-button" disabled={!canWrite} onClick={() => onEdit(po)} title="Edit">
+                  <button className="icon-button" disabled={!canWrite || po.status !== "draft"} onClick={() => onEdit(po)} title="Edit draft">
                     <Pencil size={16} />
+                  </button>
+                  <button className="icon-button" disabled={!canWrite || po.status !== "draft"} onClick={() => onValidate(po)} title="Validate PO">
+                    <ArrowRight size={16} />
+                  </button>
+                  <button className="icon-button" disabled={!canWrite} onClick={() => onCopy(po)} title="Copy to new draft">
+                    <Copy size={16} />
+                  </button>
+                  <button className="icon-button danger" disabled={!canWrite || po.status !== "draft"} onClick={() => onDelete(po)} title="Delete draft">
+                    <Trash2 size={16} />
                   </button>
                 </td>
               </tr>
             ))}
             {!filteredPurchaseOrders.length && (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   {purchaseOrders.length ? "No purchase orders match the selected filters." : "No purchase orders yet."}
                 </td>
               </tr>
@@ -1371,8 +1489,13 @@ function POForm({
       (project.is_active || project.id === editingPurchaseOrder?.project_id) &&
       (canUseAllProjects || accessibleProjectIds.has(project.id) || project.id === editingPurchaseOrder?.project_id),
   );
+  const editingCategoryIds = new Set(
+    (editingPurchaseOrder?.line_items ?? [])
+      .map((line) => line.category_id)
+      .filter((categoryId): categoryId is string => Boolean(categoryId)),
+  );
   const activeCategories = references.categories.filter(
-    (category) => category.is_active || category.id === editingPurchaseOrder?.category_id,
+    (category) => category.is_active || editingCategoryIds.has(category.id) || category.id === editingPurchaseOrder?.category_id,
   );
 
   const [supplierId, setSupplierId] = useState(editingPurchaseOrder?.supplier_id ?? activeSuppliers[0]?.id ?? "");
@@ -1384,7 +1507,6 @@ function POForm({
     currentStaff?.initials ||
     initialsFromName(editingPurchaseOrder?.requester?.full_name ?? currentStaff?.full_name);
   const [form, setForm] = useState({
-    category_id: editingPurchaseOrder?.category_id ?? activeCategories[0]?.id ?? "",
     po_date: editingPurchaseOrder?.po_date ?? isoToday(),
     delivery_date: editingPurchaseOrder?.delivery_date ?? "",
     delivery_address:
@@ -1409,8 +1531,9 @@ function POForm({
           unit: line.unit,
           rate: Number(line.rate),
           vat_rate: Number(line.vat_rate),
+          category_id: line.category_id ?? editingPurchaseOrder.category_id ?? "",
         }))
-      : [{ sort_order: 1, description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20 }]),
+      : [{ sort_order: 1, description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20, category_id: "" }]),
   ]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1449,12 +1572,16 @@ function POForm({
       setError("Add at least one line item description.");
       return;
     }
+    if (cleanLines.some((line) => !line.category_id)) {
+      setError("Select a cost category for each line item.");
+      return;
+    }
 
     const draft: PurchaseOrderDraft = {
       project_id: project.id,
       supplier_id: supplier.id,
       requester_id: requesterId,
-      category_id: form.category_id || null,
+      category_id: null,
       status: editingPurchaseOrder?.status ?? "draft",
       po_date: form.po_date,
       delivery_date: form.delivery_date || null,
@@ -1468,7 +1595,7 @@ function POForm({
       offloading_instructions: form.offloading_instructions || null,
       delivery_instructions: form.delivery_instructions || null,
       notes: form.notes || null,
-      line_items: cleanLines.map((line, index) => ({ ...line, sort_order: index + 1 })),
+      line_items: cleanLines.map((line, index) => ({ ...line, category_id: line.category_id || null, sort_order: index + 1 })),
     };
 
     try {
@@ -1527,17 +1654,6 @@ function POForm({
             </div>
           </label>
           <label>
-            Cost category
-            <select value={form.category_id} onChange={(event) => setForm({ ...form, category_id: event.target.value })}>
-              <option value="">Select category</option>
-              {activeCategories.map((category) => (
-                <option value={category.id} key={category.id}>
-                  {category.category_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
             PO date
             <input type="date" value={form.po_date} onChange={(event) => setForm({ ...form, po_date: event.target.value })} />
           </label>
@@ -1561,7 +1677,7 @@ function POForm({
         <div className="line-editor">
           <div className="section-heading compact-heading">
             <h2>Line items</h2>
-            <button type="button" onClick={() => setLines([...lines, { sort_order: lines.length + 1, description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20 }])}>
+            <button type="button" onClick={() => setLines([...lines, { sort_order: lines.length + 1, description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20, category_id: "" }])}>
               <Plus size={16} />
               Add line
             </button>
@@ -1569,6 +1685,14 @@ function POForm({
           {lines.map((line, index) => (
             <div className="line-row" key={index}>
               <input placeholder="Description" value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} />
+              <select value={line.category_id ?? ""} onChange={(event) => updateLine(index, { category_id: event.target.value })}>
+                <option value="">Category</option>
+                {activeCategories.map((category) => (
+                  <option value={category.id} key={category.id}>
+                    {category.category_name}
+                  </option>
+                ))}
+              </select>
               <input type="number" min="0" step="1" value={line.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} />
               <input value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value })} />
               <input type="number" min="0" step="1" value={line.rate} onChange={(event) => updateLine(index, { rate: Number(event.target.value) })} />
@@ -1729,8 +1853,6 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
               <dd>{po.project?.project_name}</dd>
               <dt>Cost centre</dt>
               <dd>{po.project?.cost_centre_code}</dd>
-              <dt>Category</dt>
-              <dd>{po.category?.category_name}</dd>
               <dt>Site contact</dt>
               <dd>{po.site_contact}</dd>
               <dt>Address</dt>
@@ -1743,6 +1865,7 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
             <tr>
               <th>Item code</th>
               <th>Description</th>
+              <th>Category</th>
               <th>Quantity</th>
               <th>Unit</th>
               <th>Unit price</th>
@@ -1755,6 +1878,7 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
               <tr key={line.id ?? index}>
                 <td>{index + 1}</td>
                 <td>{line.description}</td>
+                <td>{line.category?.category_name ?? "-"}</td>
                 <td>{line.quantity}</td>
                 <td>{line.unit}</td>
                 <td>{money(line.rate)}</td>
@@ -1883,14 +2007,13 @@ function Exports({ references, purchaseOrders }: { references: ReferenceData; pu
       action: () =>
         downloadCsv(
           "legendre-purchase-orders.csv",
-          ["PO number", "Date", "Status", "Project", "Supplier", "Category", "Subtotal", "VAT", "Total"],
+          ["PO number", "Date", "Status", "Project", "Supplier", "Subtotal", "VAT", "Total"],
           purchaseOrders.map((po) => [
             po.po_number,
             po.po_date,
             po.status,
             po.project?.project_name,
             po.supplier?.supplier_name,
-            po.category?.category_name,
             po.subtotal,
             po.vat_total,
             po.grand_total,
@@ -1903,13 +2026,14 @@ function Exports({ references, purchaseOrders }: { references: ReferenceData; pu
       action: () =>
         downloadCsv(
           "legendre-po-line-items.csv",
-          ["PO number", "Project", "Supplier", "Description", "Quantity", "Unit", "Rate", "VAT rate", "Line total"],
+          ["PO number", "Project", "Supplier", "Description", "Category", "Quantity", "Unit", "Rate", "VAT rate", "Line total"],
           purchaseOrders.flatMap((po) =>
             (po.line_items ?? []).map((line) => [
               po.po_number,
               po.project?.project_name,
               po.supplier?.supplier_name,
               line.description,
+              line.category?.category_name,
               line.quantity,
               line.unit,
               line.rate,

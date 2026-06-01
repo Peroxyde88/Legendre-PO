@@ -1,5 +1,5 @@
 export type AppRole = "admin" | "user" | "standard" | "viewer";
-export type PurchaseOrderStatus = "draft" | "issued" | "approved" | "cancelled" | "archived";
+export type PurchaseOrderStatus = "draft" | "validated";
 
 export type Supplier = {
   id: string;
@@ -73,9 +73,11 @@ export type PurchaseOrderLineItem = {
   unit: string;
   rate: number;
   vat_rate: number;
+  category_id: string | null;
   line_total?: number;
   line_vat?: number;
   gross_total?: number;
+  category?: CostCategory | null;
 };
 
 export type PurchaseOrder = {
