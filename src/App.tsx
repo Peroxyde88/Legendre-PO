@@ -233,6 +233,7 @@ function ProcurementShell({ session }: { session: Session }) {
         unit: line.unit,
         rate: Number(line.rate),
         vat_rate: Number(line.vat_rate),
+        item_ref: line.item_ref ?? null,
         category_id: line.category_id ?? po.category_id ?? null,
       })),
     };
@@ -381,6 +382,8 @@ function ProcurementShell({ session }: { session: Session }) {
                   { name: "site_address", label: "Site address", type: "textarea" },
                   { name: "cost_centre_code", label: "Cost centre code" },
                   { name: "default_delivery_address", label: "Default delivery address", type: "textarea" },
+                  { name: "site_contact_name", label: "Site contact name" },
+                  { name: "site_contact_phone", label: "Site contact phone" },
                   { name: "is_active", label: "Active", type: "checkbox" },
                 ]}
                 onSave={upsertProject}
@@ -1471,9 +1474,9 @@ function initialsFromName(name?: string | null) {
     .join("");
 }
 
-function formatStaffContact(staff?: StaffMember | null) {
-  if (!staff) return "";
-  return [staff.full_name, staff.phone].filter(Boolean).join(" - ");
+function formatProjectSiteContact(project?: Project | null) {
+  if (!project) return "";
+  return [project.site_contact_name, project.site_contact_phone].filter(Boolean).join(" - ");
 }
 
 function POForm({
@@ -1518,7 +1521,8 @@ function POForm({
     editingPurchaseOrder?.requester?.initials ||
     currentStaff?.initials ||
     initialsFromName(editingPurchaseOrder?.requester?.full_name ?? currentStaff?.full_name);
-  const defaultSiteContact = formatStaffContact(editingPurchaseOrder?.requester ?? currentStaff);
+  const initialProject = references.projects.find((item) => item.id === projectId) ?? activeProjects[0] ?? null;
+  const defaultSiteContact = formatProjectSiteContact(initialProject);
   const [form, setForm] = useState({
     po_date: editingPurchaseOrder?.po_date ?? isoToday(),
     delivery_date: editingPurchaseOrder?.delivery_date ?? "",
@@ -1539,6 +1543,7 @@ function POForm({
     ...(editingPurchaseOrder?.line_items?.length
       ? editingPurchaseOrder.line_items.map((line, index) => ({
           sort_order: index + 1,
+          item_ref: line.item_ref ?? "",
           description: line.description,
           quantity: Number(line.quantity),
           unit: line.unit,
@@ -1546,7 +1551,7 @@ function POForm({
           vat_rate: Number(line.vat_rate),
           category_id: line.category_id ?? editingPurchaseOrder.category_id ?? "",
         }))
-      : [{ sort_order: 1, description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20, category_id: "" }]),
+      : [{ sort_order: 1, item_ref: "", description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20, category_id: "" }]),
   ]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1566,6 +1571,7 @@ function POForm({
     setForm((current) => ({
       ...current,
       delivery_address: nextProject?.default_delivery_address || nextProject?.site_address || current.delivery_address,
+      site_contact: formatProjectSiteContact(nextProject) || current.site_contact,
     }));
   }
 
@@ -1608,7 +1614,12 @@ function POForm({
       offloading_instructions: form.offloading_instructions || null,
       delivery_instructions: form.delivery_instructions || null,
       notes: form.notes || null,
-      line_items: cleanLines.map((line, index) => ({ ...line, category_id: line.category_id || null, sort_order: index + 1 })),
+      line_items: cleanLines.map((line, index) => ({
+        ...line,
+        item_ref: line.item_ref?.trim() || null,
+        category_id: line.category_id || null,
+        sort_order: index + 1,
+      })),
     };
 
     try {
@@ -1690,13 +1701,14 @@ function POForm({
         <div className="line-editor">
           <div className="section-heading compact-heading">
             <h2>Line items</h2>
-            <button type="button" onClick={() => setLines([...lines, { sort_order: lines.length + 1, description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20, category_id: "" }])}>
+            <button type="button" onClick={() => setLines([...lines, { sort_order: lines.length + 1, item_ref: "", description: "", quantity: 1, unit: "each", rate: 0, vat_rate: 20, category_id: "" }])}>
               <Plus size={16} />
               Add line
             </button>
           </div>
           {lines.map((line, index) => (
             <div className="line-row" key={index}>
+              <input placeholder="Item ref" value={line.item_ref ?? ""} onChange={(event) => updateLine(index, { item_ref: event.target.value })} />
               <input placeholder="Description" value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} />
               <select value={line.category_id ?? ""} onChange={(event) => updateLine(index, { category_id: event.target.value })}>
                 <option value="">Category</option>
@@ -1877,6 +1889,7 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
           <thead>
             <tr>
               <th>Item code</th>
+              <th>Item ref</th>
               <th>Description</th>
               <th>Category</th>
               <th>Quantity</th>
@@ -1890,6 +1903,7 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
             {(po.line_items ?? []).map((line, index) => (
               <tr key={line.id ?? index}>
                 <td>{index + 1}</td>
+                <td>{line.item_ref ?? "-"}</td>
                 <td>{line.description}</td>
                 <td>{line.category?.category_name ?? "-"}</td>
                 <td>{line.quantity}</td>
@@ -1993,13 +2007,15 @@ function Exports({ references, purchaseOrders }: { references: ReferenceData; pu
       action: () =>
         downloadCsv(
           "legendre-projects.csv",
-          ["Name", "Code", "Site address", "Cost centre", "Default delivery", "Active"],
+          ["Name", "Code", "Site address", "Cost centre", "Default delivery", "Site contact", "Site contact phone", "Active"],
           references.projects.map((row) => [
             row.project_name,
             row.project_code,
             row.site_address,
             row.cost_centre_code,
             row.default_delivery_address,
+            row.site_contact_name,
+            row.site_contact_phone,
             row.is_active,
           ]),
         ),
@@ -2039,12 +2055,13 @@ function Exports({ references, purchaseOrders }: { references: ReferenceData; pu
       action: () =>
         downloadCsv(
           "legendre-po-line-items.csv",
-          ["PO number", "Project", "Supplier", "Description", "Category", "Quantity", "Unit", "Rate", "VAT rate", "Line total"],
+          ["PO number", "Project", "Supplier", "Item ref", "Description", "Category", "Quantity", "Unit", "Rate", "VAT rate", "Line total"],
           purchaseOrders.flatMap((po) =>
             (po.line_items ?? []).map((line) => [
               po.po_number,
               po.project?.project_name,
               po.supplier?.supplier_name,
+              line.item_ref,
               line.description,
               line.category?.category_name,
               line.quantity,

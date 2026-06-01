@@ -23,6 +23,8 @@ export type Project = {
   site_address: string | null;
   cost_centre_code: string | null;
   default_delivery_address: string | null;
+  site_contact_name: string | null;
+  site_contact_phone: string | null;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
@@ -69,6 +71,7 @@ export type PurchaseOrderLineItem = {
   id?: string;
   purchase_order_id?: string;
   sort_order: number;
+  item_ref: string | null;
   description: string;
   quantity: number;
   unit: string;

@@ -207,6 +207,7 @@ export async function createPurchaseOrder(draft: PurchaseOrderDraft) {
   const rows = line_items.map((item, index) => ({
     purchase_order_id: data.id,
     sort_order: index + 1,
+    item_ref: item.item_ref,
     description: item.description,
     quantity: item.quantity,
     unit: item.unit,
@@ -240,6 +241,7 @@ export async function updatePurchaseOrder(id: string, draft: PurchaseOrderDraft)
   const rows = line_items.map((item, index) => ({
     purchase_order_id: id,
     sort_order: index + 1,
+    item_ref: item.item_ref,
     description: item.description,
     quantity: item.quantity,
     unit: item.unit,
