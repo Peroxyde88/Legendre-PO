@@ -1979,11 +1979,19 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
           </div>
         </section>
         <table className="po-lines">
+          <colgroup>
+            <col className="po-line-ref" />
+            <col className="po-line-description" />
+            <col className="po-line-quantity" />
+            <col className="po-line-unit" />
+            <col className="po-line-rate" />
+            <col className="po-line-vat" />
+            <col className="po-line-total" />
+          </colgroup>
           <thead>
             <tr>
               <th>Item ref</th>
               <th>Description</th>
-              <th>Category</th>
               <th>Quantity</th>
               <th>Unit</th>
               <th>Unit price</th>
@@ -1996,7 +2004,6 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
               <tr key={line.id ?? index}>
                 <td>{line.item_ref ?? "-"}</td>
                 <td>{line.description}</td>
-                <td>{formatCategoryLabel(line.category) || "-"}</td>
                 <td>{line.quantity}</td>
                 <td>{line.unit}</td>
                 <td>{money(line.rate)}</td>

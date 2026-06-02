@@ -706,6 +706,28 @@ th {
   min-width: 0;
 }
 
+.po-line-ref {
+  width: 12%;
+}
+
+.po-line-description {
+  width: 40%;
+}
+
+.po-line-quantity {
+  width: 9%;
+}
+
+.po-line-unit {
+  width: 9%;
+}
+
+.po-line-rate,
+.po-line-vat,
+.po-line-total {
+  width: 10%;
+}
+
 .po-lines th {
   background: #111;
   color: #fff;
