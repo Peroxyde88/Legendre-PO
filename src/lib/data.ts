@@ -155,9 +155,9 @@ export async function deleteRow(table: string, id: string, key = "id") {
   if (error) throw error;
 }
 
-export async function deletePurchaseOrder(id: string) {
+export async function deletePurchaseOrder(id: string, requesterId: string) {
   const client = requireClient();
-  const { error } = await client.from("purchase_orders").delete().eq("id", id).eq("status", "draft");
+  const { error } = await client.from("purchase_orders").delete().eq("id", id).eq("status", "draft").eq("requester_id", requesterId);
   if (error) throw error;
 }
 

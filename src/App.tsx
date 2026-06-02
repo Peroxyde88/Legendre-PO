@@ -190,12 +190,16 @@ function ProcurementShell({ session }: { session: Session }) {
 
   async function handleDeletePurchaseOrder(po: PurchaseOrder) {
     if (po.status !== "draft") return;
+    if (po.requester_id !== currentStaff?.id) {
+      setError("Only the person who created this draft purchase order can delete it.");
+      return;
+    }
     const confirmed = window.confirm(`Delete draft purchase order ${po.po_number}? This cannot be undone.`);
     if (!confirmed) return;
 
     setError(null);
     try {
-      await deletePurchaseOrder(po.id);
+      await deletePurchaseOrder(po.id, currentStaff.id);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to delete purchase order.");
@@ -324,6 +328,7 @@ function ProcurementShell({ session }: { session: Session }) {
             {view === "purchase-orders" && (
               <PurchaseOrders
                 canWrite={canWritePo}
+                currentStaff={currentStaff}
                 purchaseOrders={purchaseOrders}
                 references={references}
                 onEdit={(po) => {
@@ -1377,6 +1382,7 @@ function RecentOrders({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] }) {
 }
 
 function PurchaseOrders({
+  currentStaff,
   purchaseOrders,
   references,
   canWrite,
@@ -1386,6 +1392,7 @@ function PurchaseOrders({
   onPreview,
   onValidate,
 }: {
+  currentStaff: StaffMember | null;
   purchaseOrders: PurchaseOrder[];
   references: ReferenceData;
   canWrite: boolean;
@@ -1448,36 +1455,39 @@ function PurchaseOrders({
             </tr>
           </thead>
           <tbody>
-            {filteredPurchaseOrders.map((po) => (
-              <tr key={po.id}>
-                <td>{po.po_number}</td>
-                <td>{shortDate(po.po_date)}</td>
-                <td>{po.requester?.initials || initialsFromName(po.requester?.full_name) || "-"}</td>
-                <td>{po.project?.project_name}</td>
-                <td>{po.supplier?.supplier_name}</td>
-                <td>
-                  <span className={`status-pill ${po.status}`}>{po.status}</span>
-                </td>
-                <td>{money(po.grand_total)}</td>
-                <td className="actions-cell">
-                  <button className="icon-button" onClick={() => onPreview(po)} title="Preview">
-                    <Eye size={16} />
-                  </button>
-                  <button className="icon-button" disabled={!canWrite || po.status !== "draft"} onClick={() => onEdit(po)} title="Edit draft">
-                    <Pencil size={16} />
-                  </button>
-                  <button className="icon-button" disabled={!canWrite || po.status !== "draft"} onClick={() => onValidate(po)} title="Validate PO">
-                    <ArrowRight size={16} />
-                  </button>
-                  <button className="icon-button" disabled={!canWrite} onClick={() => onCopy(po)} title="Copy to new draft">
-                    <Copy size={16} />
-                  </button>
-                  <button className="icon-button danger" disabled={!canWrite || po.status !== "draft"} onClick={() => onDelete(po)} title="Delete draft">
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {filteredPurchaseOrders.map((po) => {
+              const canDeleteDraft = canWrite && po.status === "draft" && po.requester_id === currentStaff?.id;
+              return (
+                <tr key={po.id}>
+                  <td>{po.po_number}</td>
+                  <td>{shortDate(po.po_date)}</td>
+                  <td>{po.requester?.initials || initialsFromName(po.requester?.full_name) || "-"}</td>
+                  <td>{po.project?.project_name}</td>
+                  <td>{po.supplier?.supplier_name}</td>
+                  <td>
+                    <span className={`status-pill ${po.status}`}>{po.status}</span>
+                  </td>
+                  <td>{money(po.grand_total)}</td>
+                  <td className="actions-cell">
+                    <button className="icon-button" onClick={() => onPreview(po)} title="Preview">
+                      <Eye size={16} />
+                    </button>
+                    <button className="icon-button" disabled={!canWrite || po.status !== "draft"} onClick={() => onEdit(po)} title="Edit draft">
+                      <Pencil size={16} />
+                    </button>
+                    <button className="icon-button" disabled={!canWrite || po.status !== "draft"} onClick={() => onValidate(po)} title="Validate PO">
+                      <ArrowRight size={16} />
+                    </button>
+                    <button className="icon-button" disabled={!canWrite} onClick={() => onCopy(po)} title="Copy to new draft">
+                      <Copy size={16} />
+                    </button>
+                    <button className="icon-button danger" disabled={!canDeleteDraft} onClick={() => onDelete(po)} title={canDeleteDraft ? "Delete draft" : "Only the creator can delete a draft PO"}>
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
             {!filteredPurchaseOrders.length && (
               <tr>
                 <td colSpan={8}>
@@ -1734,6 +1744,17 @@ function POForm({
               <Plus size={16} />
               Add line
             </button>
+          </div>
+          <div className="line-header" aria-hidden="true">
+            <span>Item ref</span>
+            <span>Description</span>
+            <span>Category</span>
+            <span>Unit numbers</span>
+            <span>Unit</span>
+            <span>Unit price</span>
+            <span>VAT</span>
+            <span>Total</span>
+            <span />
           </div>
           {lines.map((line, index) => (
             <div className="line-row" key={index}>
