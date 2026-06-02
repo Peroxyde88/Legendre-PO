@@ -51,6 +51,7 @@ export type StaffProjectAccess = {
 
 export type CostCategory = {
   id: string;
+  expense_type: string;
   category_name: string;
   category_code: string;
   description: string | null;

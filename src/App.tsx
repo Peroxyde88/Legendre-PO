@@ -404,9 +404,9 @@ function ProcurementShell({ session }: { session: Session }) {
                 rows={references.categories}
                 identity="category_name"
                 fields={[
-                  { name: "category_name", label: "Category name", required: true },
-                  { name: "category_code", label: "Category code", required: true },
-                  { name: "description", label: "Description", type: "textarea" },
+                  { name: "expense_type", label: "Type of expenses", required: true },
+                  { name: "category_name", label: "Detailed type of expenses", required: true },
+                  { name: "category_code", label: "Code", required: true },
                   { name: "is_active", label: "Active", type: "checkbox" },
                 ]}
                 onSave={upsertCategory}
@@ -1326,12 +1326,18 @@ function groupSpend(purchaseOrders: PurchaseOrder[], labelFor: (po: PurchaseOrde
     .slice(0, 8);
 }
 
+function formatCategoryLabel(category?: CostCategory | null) {
+  if (!category) return "";
+  const detail = category.category_code ? `${category.category_name} (${category.category_code})` : category.category_name;
+  return category.expense_type ? `${category.expense_type} - ${detail}` : detail;
+}
+
 function groupLineSpend(purchaseOrders: PurchaseOrder[]) {
   const grouped = new Map<string, number>();
 
   purchaseOrders.forEach((po) => {
     (po.line_items ?? []).forEach((line) => {
-      const label = line.category?.category_name ?? "Unassigned";
+      const label = formatCategoryLabel(line.category) || "Unassigned";
       const value = Number(line.gross_total ?? line.quantity * line.rate * (1 + line.vat_rate / 100));
       grouped.set(label, (grouped.get(label) ?? 0) + value);
     });
@@ -1764,7 +1770,7 @@ function POForm({
                 <option value="">Category</option>
                 {activeCategories.map((category) => (
                   <option value={category.id} key={category.id}>
-                    {category.category_name}
+                    {formatCategoryLabel(category)}
                   </option>
                 ))}
               </select>
@@ -1953,7 +1959,7 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
               <tr key={line.id ?? index}>
                 <td>{line.item_ref ?? "-"}</td>
                 <td>{line.description}</td>
-                <td>{line.category?.category_name ?? "-"}</td>
+                <td>{formatCategoryLabel(line.category) || "-"}</td>
                 <td>{line.quantity}</td>
                 <td>{line.unit}</td>
                 <td>{money(line.rate)}</td>
@@ -2111,7 +2117,7 @@ function Exports({ references, purchaseOrders }: { references: ReferenceData; pu
               po.supplier?.supplier_name,
               line.item_ref,
               line.description,
-              line.category?.category_name,
+              formatCategoryLabel(line.category),
               line.quantity,
               line.unit,
               line.rate,

@@ -34,7 +34,7 @@ export async function loadReferenceData(): Promise<ReferenceData> {
     client.from("projects").select("*").order("project_name"),
     client.from("staff_members").select("*").order("full_name"),
     client.from("staff_project_access").select("*"),
-    client.from("cost_categories").select("*").order("category_name"),
+    client.from("cost_categories").select("*").order("expense_type").order("category_name"),
     client.from("app_settings").select("*").order("setting_key"),
   ]);
 
