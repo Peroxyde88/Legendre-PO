@@ -36,6 +36,7 @@ import {
   roleCanAdmin,
   roleCanWritePo,
   saveStaffMember,
+  updateOwnStaffProfile,
   updatePurchaseOrder,
   validatePurchaseOrder,
   upsertCategory,
@@ -259,7 +260,7 @@ function ProcurementShell({ session }: { session: Session }) {
     { key: "new-po", label: "New PO", icon: FilePlus2, disabled: !canWritePo },
     { key: "suppliers", label: "Suppliers", icon: Package, disabled: !canManageSuppliers },
     { key: "projects", label: "Projects", icon: Building2, disabled: !canAdmin },
-    { key: "staff", label: "Staff", icon: Users, disabled: !canAdmin },
+    { key: "staff", label: "Staff", icon: Users, disabled: !currentStaff?.is_active },
     { key: "categories", label: "Categories", icon: Archive, disabled: !canAdmin },
     { key: "settings", label: "Settings", icon: Settings, disabled: !canAdmin },
     { key: "exports", label: "Exports", icon: Download },
@@ -359,7 +360,6 @@ function ProcurementShell({ session }: { session: Session }) {
                   { name: "email", label: "Email", type: "email" },
                   { name: "phone", label: "Phone number" },
                   { name: "address", label: "Address", type: "textarea" },
-                  { name: "vat_number", label: "VAT number" },
                   { name: "notes", label: "Notes", type: "textarea" },
                   { name: "is_active", label: "Active", type: "checkbox" },
                 ]}
@@ -391,7 +391,7 @@ function ProcurementShell({ session }: { session: Session }) {
               />
             )}
             {view === "staff" && (
-              <StaffAdminView references={references} onRefresh={refreshView} />
+              <StaffAdminView canAdmin={canAdmin} currentStaff={currentStaff} references={references} onRefresh={refreshView} />
             )}
             {view === "categories" && (
               <AdminPanel
@@ -938,15 +938,27 @@ function SettingsPanel({
   );
 }
 
-function StaffAdminView({ references, onRefresh }: { references: ReferenceData; onRefresh: () => Promise<void> }) {
+function StaffAdminView({
+  canAdmin,
+  currentStaff,
+  references,
+  onRefresh,
+}: {
+  canAdmin: boolean;
+  currentStaff: StaffMember | null;
+  references: ReferenceData;
+  onRefresh: () => Promise<void>;
+}) {
   const [editing, setEditing] = useState<Partial<StaffMember> | null>(null);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const visibleStaff = canAdmin ? references.staff : currentStaff ? [currentStaff] : [];
 
   function editStaff(member?: StaffMember) {
+    if (!canAdmin && member?.id !== currentStaff?.id) return;
     setEditing(member ?? { role: "user", is_active: false });
     setSelectedProjects(
-      member
+      canAdmin && member
         ? references.projectAccess
             .filter((access) => access.staff_member_id === member.id)
             .map((access) => access.project_id)
@@ -973,27 +985,37 @@ function StaffAdminView({ references, onRefresh }: { references: ReferenceData; 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const role = String(form.get("role") || "user") as AppRole;
-    const payload: Partial<StaffMember> = {
-      id: editing?.id,
-      full_name: String(form.get("full_name") ?? "").trim(),
-      initials: String(form.get("initials") ?? "").trim().toUpperCase() || null,
-      email: String(form.get("email") ?? "").trim().toLowerCase(),
-      phone: String(form.get("phone") ?? "").trim() || null,
-      role,
-      is_active: form.get("is_active") === "on",
-    };
 
     try {
-      await saveStaffMember(payload, role === "admin" ? [] : selectedProjects);
+      if (canAdmin) {
+        const role = String(form.get("role") || "user") as AppRole;
+        const payload: Partial<StaffMember> = {
+          id: editing?.id,
+          full_name: String(form.get("full_name") ?? "").trim(),
+          initials: String(form.get("initials") ?? "").trim().toUpperCase() || null,
+          email: String(form.get("email") ?? "").trim().toLowerCase(),
+          phone: String(form.get("phone") ?? "").trim() || null,
+          role,
+          is_active: form.get("is_active") === "on",
+        };
+
+        await saveStaffMember(payload, role === "admin" ? [] : selectedProjects);
+      } else {
+        await updateOwnStaffProfile({
+          full_name: String(form.get("full_name") ?? "").trim(),
+          initials: String(form.get("initials") ?? "").trim().toUpperCase() || null,
+          phone: String(form.get("phone") ?? "").trim() || null,
+        });
+      }
       setEditing(null);
       await onRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save staff member.");
+      setError(err instanceof Error ? err.message : "Unable to save profile.");
     }
   }
 
   async function remove(id: string) {
+    if (!canAdmin) return;
     if (!confirm("Delete this staff member?")) return;
     try {
       await deleteRow("staff_members", id);
@@ -1007,13 +1029,15 @@ function StaffAdminView({ references, onRefresh }: { references: ReferenceData; 
     <section className="work-section">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Admin database</p>
-          <h2>Staff / Users</h2>
+          <p className="eyebrow">{canAdmin ? "Admin database" : "My account"}</p>
+          <h2>{canAdmin ? "Staff / Users" : "My profile"}</h2>
         </div>
-        <button onClick={() => editStaff()}>
-          <Plus size={16} />
-          New
-        </button>
+        {canAdmin && (
+          <button onClick={() => editStaff()}>
+            <Plus size={16} />
+            New
+          </button>
+        )}
       </div>
       {error && <div className="notice error">{error}</div>}
       {editing && (
@@ -1028,40 +1052,44 @@ function StaffAdminView({ references, onRefresh }: { references: ReferenceData; 
           </label>
           <label>
             Email
-            <input name="email" required type="email" defaultValue={editing.email ?? ""} />
+            <input name="email" required readOnly={!canAdmin} type="email" defaultValue={editing.email ?? currentStaff?.email ?? ""} />
           </label>
           <label>
             Phone number
             <input name="phone" defaultValue={editing.phone ?? ""} />
           </label>
-          <label>
-            Role
-            <select name="role" defaultValue={normalizeRole(editing.role)}>
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
-          <label>
-            Active access
-            <input name="is_active" type="checkbox" defaultChecked={Boolean(editing.is_active)} />
-          </label>
-          <fieldset className="project-access-list wide">
-            <legend>Project access</legend>
-            {references.projects.map((project) => (
-              <label key={project.id}>
-                <input
-                  checked={selectedProjects.includes(project.id)}
-                  onChange={() => toggleProject(project.id)}
-                  type="checkbox"
-                />
-                <span>{project.project_name}</span>
+          {canAdmin && (
+            <>
+              <label>
+                Role
+                <select name="role" defaultValue={normalizeRole(editing.role)}>
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
               </label>
-            ))}
-          </fieldset>
+              <label>
+                Active access
+                <input name="is_active" type="checkbox" defaultChecked={Boolean(editing.is_active)} />
+              </label>
+              <fieldset className="project-access-list wide">
+                <legend>Project access</legend>
+                {references.projects.map((project) => (
+                  <label key={project.id}>
+                    <input
+                      checked={selectedProjects.includes(project.id)}
+                      onChange={() => toggleProject(project.id)}
+                      type="checkbox"
+                    />
+                    <span>{project.project_name}</span>
+                  </label>
+                ))}
+              </fieldset>
+            </>
+          )}
           <div className="button-row wide">
             <button type="submit">
               <Save size={16} />
-              Save access
+              {canAdmin ? "Save access" : "Save profile"}
             </button>
             <button type="button" className="secondary" onClick={() => setEditing(null)}>
               <X size={16} />
@@ -1085,7 +1113,7 @@ function StaffAdminView({ references, onRefresh }: { references: ReferenceData; 
             </tr>
           </thead>
           <tbody>
-            {references.staff.map((member) => (
+            {visibleStaff.map((member) => (
               <tr key={member.id}>
                 <td>{member.full_name}</td>
                 <td>{member.initials}</td>
@@ -1098,15 +1126,17 @@ function StaffAdminView({ references, onRefresh }: { references: ReferenceData; 
                   <button className="icon-button" onClick={() => editStaff(member)} title="Edit access">
                     <Pencil size={16} />
                   </button>
-                  <button className="icon-button danger" onClick={() => remove(member.id)} title="Delete">
-                    <Trash2 size={16} />
-                  </button>
+                  {canAdmin && (
+                    <button className="icon-button danger" onClick={() => remove(member.id)} title="Delete">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
-            {!references.staff.length && (
+            {!visibleStaff.length && (
               <tr>
-                <td colSpan={7}>No staff records yet.</td>
+                <td colSpan={8}>No staff records yet.</td>
               </tr>
             )}
           </tbody>
@@ -1827,7 +1857,7 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
     <div className="print-area">
       <article className="po-page po-order-page">
         <header className="po-header">
-          <div className="po-logo">LEGENDRE</div>
+          <img className="po-logo-image" src={legendreLogo} alt="Legendre" />
           <div className="po-company">
             <strong>{company.name ?? "Legendre UK Limited"}</strong>
             <span>{company.address ?? "Ground Floor, Peer House, 8-14 Verulam Street, London, WC1X 8LZ"}</span>

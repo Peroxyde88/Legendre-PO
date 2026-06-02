@@ -582,6 +582,13 @@ th {
   letter-spacing: 0;
 }
 
+.po-logo-image {
+  display: block;
+  height: auto;
+  object-fit: contain;
+  width: 180px;
+}
+
 .po-company {
   display: grid;
   font-size: 12px;
@@ -912,6 +919,10 @@ th {
 
   .po-logo {
     font-size: 22px;
+  }
+
+  .po-logo-image {
+    width: 160px;
   }
 
   .po-company {

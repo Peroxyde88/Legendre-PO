@@ -119,6 +119,28 @@ export async function saveStaffMember(payload: Partial<StaffMember>, projectIds:
   }
 }
 
+export async function updateOwnStaffProfile(payload: Pick<StaffMember, "full_name" | "initials" | "phone">) {
+  const client = requireClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError) throw userError;
+
+  const email = userData.user?.email?.toLowerCase();
+  if (!email) throw new Error("You must be signed in to update your profile.");
+
+  const { error } = await client
+    .from("staff_members")
+    .update({
+      full_name: payload.full_name.trim(),
+      initials: payload.initials?.trim().toUpperCase() || null,
+      phone: payload.phone?.trim() || null,
+    })
+    .eq("email", email)
+    .select("id")
+    .single();
+
+  if (error) throw error;
+}
+
 export async function upsertCategory(payload: Partial<CostCategory>) {
   return upsertRow("cost_categories", payload);
 }
