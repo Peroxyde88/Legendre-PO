@@ -387,11 +387,6 @@ th {
   margin-top: 3px;
 }
 
-.tick-box.disabled {
-  background: #f6f4f7;
-  color: #8b8790;
-}
-
 .state-message,
 .login-screen {
   align-items: center;

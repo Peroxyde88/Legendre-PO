@@ -1705,7 +1705,7 @@ function POForm({
       offloading_instructions: form.offloading_instructions || null,
       delivery_instructions: form.delivery_instructions || null,
       include_driver_leaflet: form.include_driver_leaflet,
-      include_terms_conditions: form.include_driver_leaflet && form.include_terms_conditions,
+      include_terms_conditions: form.include_terms_conditions,
       notes: form.notes || null,
       line_items: cleanLines.map((line, index) => ({
         ...line,
@@ -1879,23 +1879,16 @@ function POForm({
               <input
                 checked={form.include_driver_leaflet}
                 type="checkbox"
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    include_driver_leaflet: event.target.checked,
-                    include_terms_conditions: event.target.checked ? form.include_terms_conditions : false,
-                  })
-                }
+                onChange={(event) => setForm({ ...form, include_driver_leaflet: event.target.checked })}
               />
               <span>
                 <strong>Driver leaflet</strong>
                 <small>Include the driver leaflet after the purchase order.</small>
               </span>
             </label>
-            <label className={`tick-box ${!form.include_driver_leaflet ? "disabled" : ""}`}>
+            <label className="tick-box">
               <input
                 checked={form.include_terms_conditions}
-                disabled={!form.include_driver_leaflet}
                 type="checkbox"
                 onChange={(event) => setForm({ ...form, include_terms_conditions: event.target.checked })}
               />
@@ -2137,7 +2130,7 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
           </ul>
         </article>
       )}
-      {po.include_driver_leaflet && po.include_terms_conditions && (
+      {po.include_terms_conditions && (
         <>
           <article className="po-page terms-page">
             <img src={termsConditionsPage1} alt="Legendre terms and conditions page 1" />
