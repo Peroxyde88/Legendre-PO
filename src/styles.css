@@ -744,6 +744,27 @@ th {
   margin: 0 0 8px;
 }
 
+.po-notes-block {
+  border: 1px solid #111;
+  margin-top: 10px;
+  padding: 8px;
+}
+
+.po-notes-block h3 {
+  background: #111;
+  color: #fff;
+  font-size: 11px;
+  margin: -8px -8px 7px;
+  padding: 6px 8px;
+  text-transform: uppercase;
+}
+
+.po-notes-block p {
+  font-size: 11px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .po-totals {
   border: 1px solid #111;
   align-self: start;
@@ -1049,6 +1070,22 @@ th {
     font-size: 9px;
     line-height: 1.28;
     margin: 0 0 5px;
+  }
+
+  .po-notes-block {
+    margin-top: 7px;
+    padding: 5px;
+  }
+
+  .po-notes-block h3 {
+    font-size: 9px;
+    margin: -5px -5px 5px;
+    padding: 4px 5px;
+  }
+
+  .po-notes-block p {
+    font-size: 9px;
+    line-height: 1.28;
   }
 
   .po-totals div {

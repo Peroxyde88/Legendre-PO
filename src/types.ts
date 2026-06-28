@@ -25,6 +25,9 @@ export type Project = {
   default_delivery_address: string | null;
   site_contact_name: string | null;
   site_contact_phone: string | null;
+  default_vehicle_requirements: string | null;
+  default_offloading_instructions: string | null;
+  default_delivery_instructions: string | null;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;

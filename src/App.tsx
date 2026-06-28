@@ -388,6 +388,9 @@ function ProcurementShell({ session }: { session: Session }) {
                   { name: "cost_centre_code", label: "Cost centre code" },
                   { name: "site_contact_name", label: "Site contact name" },
                   { name: "site_contact_phone", label: "Site contact phone" },
+                  { name: "default_vehicle_requirements", label: "Default vehicle requirements", type: "textarea" },
+                  { name: "default_offloading_instructions", label: "Default offloading instructions", type: "textarea" },
+                  { name: "default_delivery_instructions", label: "Default delivery instructions", type: "textarea" },
                   { name: "is_active", label: "Active", type: "checkbox" },
                 ]}
                 onSave={upsertProject}
@@ -1524,6 +1527,11 @@ function formatProjectSiteContact(project?: Project | null) {
   return [project.site_contact_name, project.site_contact_phone].filter(Boolean).join(" - ");
 }
 
+const DEFAULT_VEHICLE_REQUIREMENTS = "Vehicle to have accreditation FORS Silver as a minimum.";
+const DEFAULT_OFFLOADING_INSTRUCTIONS = "By hand during site delivery hours.";
+const DEFAULT_DELIVERY_INSTRUCTIONS =
+  "Please call site contact 30 minutes prior to arrival. All drivers must be aware of the site and delivery rules as per the Driver's Leaflet.";
+
 type PurchaseOrderLineDraft = PurchaseOrderLineItem & {
   expense_type?: string;
 };
@@ -1582,15 +1590,15 @@ function POForm({
     delivery_date: editingPurchaseOrder?.delivery_date ?? "",
     delivery_address:
       editingPurchaseOrder?.delivery_address ??
-      activeProjects[0]?.default_delivery_address ??
-      activeProjects[0]?.site_address ??
+      initialProject?.default_delivery_address ??
+      initialProject?.site_address ??
       "",
     site_contact: editingPurchaseOrder?.site_contact ?? defaultSiteContact,
-    vehicle_requirements: editingPurchaseOrder?.vehicle_requirements ?? "Vehicle to have accreditation FORS Silver as a minimum.",
-    offloading_instructions: editingPurchaseOrder?.offloading_instructions ?? "By hand during site delivery hours.",
+    vehicle_requirements: editingPurchaseOrder?.vehicle_requirements ?? initialProject?.default_vehicle_requirements ?? DEFAULT_VEHICLE_REQUIREMENTS,
+    offloading_instructions:
+      editingPurchaseOrder?.offloading_instructions ?? initialProject?.default_offloading_instructions ?? DEFAULT_OFFLOADING_INSTRUCTIONS,
     delivery_instructions:
-      editingPurchaseOrder?.delivery_instructions ??
-      "Please call site contact 30 minutes prior to arrival. All drivers must be aware of the site and delivery rules as per the Driver's Leaflet.",
+      editingPurchaseOrder?.delivery_instructions ?? initialProject?.default_delivery_instructions ?? DEFAULT_DELIVERY_INSTRUCTIONS,
     notes: editingPurchaseOrder?.notes ?? "",
   });
   const [lines, setLines] = useState<PurchaseOrderLineDraft[]>([
@@ -1630,6 +1638,9 @@ function POForm({
       ...current,
       delivery_address: nextProject?.default_delivery_address || nextProject?.site_address || current.delivery_address,
       site_contact: formatProjectSiteContact(nextProject) || current.site_contact,
+      vehicle_requirements: nextProject?.default_vehicle_requirements || DEFAULT_VEHICLE_REQUIREMENTS,
+      offloading_instructions: nextProject?.default_offloading_instructions || DEFAULT_OFFLOADING_INSTRUCTIONS,
+      delivery_instructions: nextProject?.default_delivery_instructions || DEFAULT_DELIVERY_INSTRUCTIONS,
     }));
   }
 
@@ -2035,6 +2046,12 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
             </div>
           </div>
         </section>
+        {po.notes && (
+          <section className="po-notes-block">
+            <h3>Order notes</h3>
+            <p>{po.notes}</p>
+          </section>
+        )}
         <footer className="po-footer">
           All invoices must be sent as a .pdf file via email to {invoiceEmail} and must be addressed to Legendre UK
           Limited, Ground Floor, Peer House, 8-14 Verulam Street, London, WC1X 8LZ. Please include the corresponding
