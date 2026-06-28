@@ -49,6 +49,8 @@ import { downloadCsv } from "./lib/csv";
 import { hasSupabaseConfig, supabase } from "./lib/supabase";
 import { isoToday, money, shortDate } from "./lib/format";
 import legendreLogo from "./assets/legendre-logo.png";
+import termsConditionsPage1 from "./assets/terms-conditions-1.png";
+import termsConditionsPage2 from "./assets/terms-conditions-2.png";
 import type {
   AppRole,
   AppSetting,
@@ -231,6 +233,8 @@ function ProcurementShell({ session }: { session: Session }) {
       vehicle_requirements: po.vehicle_requirements,
       offloading_instructions: po.offloading_instructions,
       delivery_instructions: po.delivery_instructions,
+      include_driver_leaflet: po.include_driver_leaflet,
+      include_terms_conditions: po.include_terms_conditions,
       notes: po.notes,
       line_items: (po.line_items ?? []).map((line, index) => ({
         sort_order: index + 1,
@@ -1614,6 +1618,8 @@ function POForm({
       editingPurchaseOrder?.offloading_instructions ?? initialProject?.default_offloading_instructions ?? DEFAULT_OFFLOADING_INSTRUCTIONS,
     delivery_instructions:
       editingPurchaseOrder?.delivery_instructions ?? initialProject?.default_delivery_instructions ?? DEFAULT_DELIVERY_INSTRUCTIONS,
+    include_driver_leaflet: editingPurchaseOrder?.include_driver_leaflet ?? true,
+    include_terms_conditions: editingPurchaseOrder?.include_terms_conditions ?? false,
     notes: editingPurchaseOrder?.notes ?? "",
   });
   const [lines, setLines] = useState<PurchaseOrderLineDraft[]>([
@@ -1698,6 +1704,8 @@ function POForm({
       vehicle_requirements: form.vehicle_requirements || null,
       offloading_instructions: form.offloading_instructions || null,
       delivery_instructions: form.delivery_instructions || null,
+      include_driver_leaflet: form.include_driver_leaflet,
+      include_terms_conditions: form.include_driver_leaflet && form.include_terms_conditions,
       notes: form.notes || null,
       line_items: cleanLines.map((line, index) => ({
         ...line,
@@ -1866,6 +1874,37 @@ function POForm({
         </div>
 
         <div className="form-grid">
+          <div className="wide attachment-options">
+            <label className="tick-box">
+              <input
+                checked={form.include_driver_leaflet}
+                type="checkbox"
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    include_driver_leaflet: event.target.checked,
+                    include_terms_conditions: event.target.checked ? form.include_terms_conditions : false,
+                  })
+                }
+              />
+              <span>
+                <strong>Driver leaflet</strong>
+                <small>Include the driver leaflet after the purchase order.</small>
+              </span>
+            </label>
+            <label className={`tick-box ${!form.include_driver_leaflet ? "disabled" : ""}`}>
+              <input
+                checked={form.include_terms_conditions}
+                disabled={!form.include_driver_leaflet}
+                type="checkbox"
+                onChange={(event) => setForm({ ...form, include_terms_conditions: event.target.checked })}
+              />
+              <span>
+                <strong>Terms & Conditions</strong>
+                <small>Include Legendre conditions after the driver leaflet.</small>
+              </span>
+            </label>
+          </div>
           <label>
             Site contact
             <input value={form.site_contact} onChange={(event) => setForm({ ...form, site_contact: event.target.value })} />
@@ -2087,15 +2126,27 @@ function PurchaseOrderPreview({ po, company }: { po: PurchaseOrder; company: Rec
           post or to a different email address.
         </footer>
       </article>
-      <article className="po-page driver-page">
-        <h2>Drivers Leaflet - Rev 3.0</h2>
-        <p className="driver-lead">To be rigorously respected on site:</p>
-        <ul>
-          {driverRules.map((rule) => (
-            <li key={rule}>{rule}</li>
-          ))}
-        </ul>
-      </article>
+      {po.include_driver_leaflet && (
+        <article className="po-page driver-page">
+          <h2>Drivers Leaflet - Rev 3.0</h2>
+          <p className="driver-lead">To be rigorously respected on site:</p>
+          <ul>
+            {driverRules.map((rule) => (
+              <li key={rule}>{rule}</li>
+            ))}
+          </ul>
+        </article>
+      )}
+      {po.include_driver_leaflet && po.include_terms_conditions && (
+        <>
+          <article className="po-page terms-page">
+            <img src={termsConditionsPage1} alt="Legendre terms and conditions page 1" />
+          </article>
+          <article className="po-page terms-page">
+            <img src={termsConditionsPage2} alt="Legendre terms and conditions page 2" />
+          </article>
+        </>
+      )}
     </div>
   );
 }

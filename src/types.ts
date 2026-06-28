@@ -108,6 +108,8 @@ export type PurchaseOrder = {
   vehicle_requirements: string | null;
   offloading_instructions: string | null;
   delivery_instructions: string | null;
+  include_driver_leaflet: boolean;
+  include_terms_conditions: boolean;
   subtotal: number;
   vat_total: number;
   grand_total: number;

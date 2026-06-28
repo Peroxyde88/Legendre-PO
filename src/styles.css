@@ -354,6 +354,44 @@ th {
   font-size: 0.82rem;
 }
 
+.attachment-options {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+.tick-box {
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #ded9e3;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+}
+
+.tick-box input {
+  height: 18px;
+  margin-top: 2px;
+  width: 18px;
+}
+
+.tick-box strong,
+.tick-box small {
+  display: block;
+}
+
+.tick-box small {
+  color: #817d87;
+  font-size: 0.82rem;
+  margin-top: 3px;
+}
+
+.tick-box.disabled {
+  background: #f6f4f7;
+  color: #8b8790;
+}
+
 .state-message,
 .login-screen {
   align-items: center;
@@ -823,6 +861,17 @@ th {
   font-weight: 800;
 }
 
+.terms-page {
+  padding: 0;
+}
+
+.terms-page img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
 .export-grid {
   display: grid;
   gap: 14px;
@@ -910,6 +959,10 @@ th {
   }
 
   .line-row {
+    grid-template-columns: 1fr;
+  }
+
+  .attachment-options {
     grid-template-columns: 1fr;
   }
 
@@ -1002,6 +1055,10 @@ th {
   .po-order-page {
     display: flex;
     flex-direction: column;
+  }
+
+  .terms-page {
+    padding: 0;
   }
 
   .po-header {
