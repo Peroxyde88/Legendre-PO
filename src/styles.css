@@ -999,16 +999,44 @@ th {
     print-color-adjust: exact;
   }
 
-  body * {
-    visibility: hidden !important;
+  body > * {
+    display: none !important;
   }
 
-  .print-area,
-  .print-area * {
-    visibility: visible !important;
+  #root {
+    display: block !important;
   }
 
-  .modal-backdrop,
+  .state-message,
+  .login-screen {
+    display: none !important;
+  }
+
+  .app-shell,
+  .workspace {
+    background: #fff !important;
+    display: block !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  .sidebar,
+  .topbar,
+  .workspace > :not(.modal-backdrop) {
+    display: none !important;
+  }
+
+  .modal-backdrop {
+    background: #fff !important;
+    display: block !important;
+    inset: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    position: static !important;
+  }
+
   .modal-shell {
     background: #fff !important;
     display: block !important;
@@ -1021,14 +1049,17 @@ th {
 
   .print-area {
     background: #fff !important;
+    box-sizing: border-box !important;
     display: block !important;
     gap: 0 !important;
-    left: 0;
     margin: 0 !important;
     padding: 0 !important;
-    position: absolute;
-    top: 0;
+    position: static !important;
     width: 210mm;
+  }
+
+  .print-area * {
+    box-sizing: border-box !important;
   }
 
   .modal-actions {
@@ -1037,21 +1068,21 @@ th {
 
   .po-page {
     box-shadow: none;
-    break-after: page;
+    break-after: auto;
     height: 297mm;
     margin: 0 !important;
     max-height: 297mm;
     min-height: 0;
     overflow: hidden;
     padding: 9mm 10mm;
-    page-break-after: always;
+    page-break-after: auto;
     page-break-inside: avoid;
     width: 210mm;
   }
 
-  .po-page:last-child {
-    break-after: auto;
-    page-break-after: auto;
+  .po-page:not(:last-child) {
+    break-after: page;
+    page-break-after: always;
   }
 
   .po-order-page {
